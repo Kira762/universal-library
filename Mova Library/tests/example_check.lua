@@ -47,6 +47,20 @@ assert(realLoad(tsrc, "test"))()
 for _ = 1, 10 do mock.flush() end
 game.HttpGet = oldHttpGet
 local tw = MovaRef.Windows[#MovaRef.Windows]
-assert(tw.Name == "Mova Test" and #tw.Tabs >= 3, "test.lua window built")
+assert(tw.Name == "Mova Test" and #tw.Tabs >= 6, "test.lua window built")
+-- every button in the quick script must run without throwing (the ones that hide / unload the UI
+-- are skipped so the rest can still be pressed)
+local pressed, errors = 0, {}
+for _, el in ipairs(tw._allElements) do
+	if el.Type == "Button" and not el.Destroyed and not (el.Name:find("Hide") or el.Name:find("Destroy everything")) then
+		pressed = pressed + 1
+		local ok, e = pcall(function() el:Press() for _ = 1, 3 do mock.flush() end end)
+		if not ok then errors[#errors + 1] = el.Name .. ": " .. tostring(e) end
+	end
+end
+assert(#errors == 0, "test.lua button callbacks threw:\n" .. table.concat(errors, "\n"))
+for _, tab in ipairs(tw.Tabs) do tw:SelectTab(tab) end
+MovaRef:SetLocale("es") MovaRef:SetLocale("en")
+for _ = 1, 40 do mock.flush() end
 tw:Destroy()
-print("test.lua ok")
+print(string.format("test.lua ok (%d buttons pressed)", pressed))

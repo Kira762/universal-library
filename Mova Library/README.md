@@ -65,7 +65,18 @@ All timings live in one `Motion` table (`fast 0.12`, `base 0.22`, `slow 0.4`, Qu
 
 ## Quick test
 
-`test.lua` is a small script with **no library code inside it** — it loads `source.lua` from the branch URL (falls back to `main`, then to a local `readfile("mova.lua")`), builds one window that exercises every element, and never has to change when the library does. Run it from your executor to check the latest push:
+`test.lua` is a script with **no library code inside it** — it loads `source.lua` from the branch URL (falls back to `main`, then to a local `readfile("mova.lua")`) and never has to change when the library does. It builds one window organised by what you want to check; every callback prints a `[Mova test]` line:
+
+| Tab | Covers |
+| --- | --- |
+| **Elements** | every element in several variants: buttons (plain / description / icon), toggles (+ keybind), sliders (percent, large range, decimals, negative, prefix), inputs (on-enter, live, numeric, clear-on-enter), dropdowns (single, multi + search, refreshable), keybinds (Press / Toggle / Hold / mouse), colour pickers (± alpha), labels with icons, paragraphs, dividers |
+| **Layout** | sections (open / collapsed), two- and three-column rows, a grid of columns, responsive shrinking and stacking |
+| **States** | lock / unlock, show / hide, live `SetTitle` / `SetDescription` / `Paragraph:Set`, programmatic `Set` with and without callbacks, `Window:Set/Get`, `OnChanged`, `Destroy` |
+| **Overlays** | notifications (each type, actions, auto duration, asset icon, stacking), toasts, dialogs (confirm, dismissable, three buttons) |
+| **Window** | hide / show / minimise / recentre, title + subtitle, rebinding the toggle key, themes + a registered custom theme, save / load / list / autoload configs, locale switch, an icon showcase, search tip, unload |
+| **Stress** | 30 toggles + 10 sliders with bulk flip / randomise and a `Mova.Flags` dump |
+
+Run it from your executor to check the latest push:
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Kira762/universal-library/arena/98807242-universal-library/Mova%20Library/test.lua"))()
