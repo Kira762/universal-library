@@ -365,13 +365,14 @@ test("Themes", function()
 	for _, n in ipairs(names) do truthy(Mova:SetTheme(n), "theme " .. n) end
 	eq(Mova:GetTheme().Name, names[#names])
 	Mova:SetTheme("Dark")
-	eq(Window.Main.BackgroundColor3, Mova.Themes.Dark.Background)
+	eq(Window.Main.BackgroundColor3, Mova.Themes.Dark.Sidebar)
+	eq(Window.Content.BackgroundColor3, Mova.Themes.Dark.Background)
 	truthy(not Mova:SetTheme("DoesNotExist"))
 	Mova:RegisterTheme("Custom", { Accent = Color3.fromRGB(1, 2, 3) })
 	Window:ChangeTheme("Custom")
 	eq(Mova:GetTheme().Accent, Color3.fromRGB(1, 2, 3))
 	Mova:SetTheme({ Name = "Inline", Background = Color3.fromRGB(9, 9, 9) })
-	eq(Window.Main.BackgroundColor3, Color3.fromRGB(9, 9, 9))
+	eq(Window.Content.BackgroundColor3, Color3.fromRGB(9, 9, 9))
 	Mova:SetTheme("Dark")
 	-- toggle colours follow state after a theme change
 	local t = Mova.Options.AutoFarm

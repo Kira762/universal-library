@@ -304,7 +304,7 @@ Mova.Themes.Dark = {
 	FontFamily = "rbxasset://fonts/families/GothamSSm.json", -- built-in family, weights via FontFace
 	Radius = 10,                            -- element corner radius
 	WindowRadius = 14,
-	StrokeTransparency = 0.45,              -- resting element outline
+	StrokeTransparency = 0.55,              -- resting element outline
 }
 
 local function derive(base, overrides)
@@ -756,6 +756,17 @@ local function brighten(color, amount)
 	)
 end
 
+-- Gen 2 draws every surface as a white frame tinted by a vertical UIGradient (slightly lighter at
+-- the top). Same trick here, kept theme-aware through a hook.
+local function SurfaceGradient(parent, colorKey, amount, rotation)
+	local g = New("UIGradient", { Rotation = rotation or 90, Parent = parent })
+	onTheme(g, function()
+		local base = themeValue(colorKey or "Surface")
+		g.Color = ColorSequence.new(brighten(base, amount or 0.035), base)
+	end)
+	return g
+end
+
 -- Icons drawn from rotated frames so nothing depends on fonts having a glyph or on asset ids.
 local GLYPHS = {}
 local function Glyph(kind, parent, colorKey, size, thickness)
@@ -794,11 +805,11 @@ local function Glyph(kind, parent, colorKey, size, thickness)
 			line(len, -45, -off, off * 0.5)
 			line(len, 45, off, off * 0.5)
 		elseif kind == "chevron-right" then
-			line(len, -45, -off * 0.5, -off)
-			line(len, 45, -off * 0.5, off)
+			line(len, 45, off * 0.5, -off * 0.5)   -- "\" on top, "/" below -> ">"
+			line(len, -45, off * 0.5, off * 0.5)
 		else
-			line(len, 45, off * 0.5, -off)
-			line(len, -45, off * 0.5, off)
+			line(len, -45, -off * 0.5, -off * 0.5) -- "/" on top, "\" below -> "<"
+			line(len, 45, -off * 0.5, off * 0.5)
 		end
 	elseif kind == "check" then
 		line(size * 0.3, 45, -size * 0.2, size * 0.08)
@@ -1241,7 +1252,6 @@ function Mova:Notify(props)
 		Parent = card,
 	})
 	Corner(2, bar)
-	Shadow(bar, accentKey, 10, 0.4)
 
 	local iconImage = resolveIcon(icon)
 	local textLeft = iconImage and 28 or 0
@@ -1585,6 +1595,7 @@ local function buildCard(container, props, kind, controlWidth)
 		Parent = container.Holder,
 	})
 	Corner(nil, card)
+	SurfaceGradient(card, "Surface", 0.03)
 	local stroke = Stroke(card)
 	local overlay = hoverOverlay(card)
 	local sizeConstraint = New("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
@@ -1735,7 +1746,7 @@ function Container:CreateToggle(props)
 		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
 	})
 	Corner(8, knob)
-	local glow = Shadow(knob, "Accent", 10, 1)
+	local glow = nil -- (an accent UIShadow halo was tried here; it reads as a blue outline, so it is off)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 
 	local function render(animate)
@@ -2949,8 +2960,10 @@ function Mova:CreateWindow(props)
 	self.SidebarWidth = sidebarWidth
 
 	-- main frame ----------------------------------------------------------------------------
+	-- The frame itself is sidebar-coloured; the content panel paints the lighter area with its own
+	-- rounded corners, so nothing square ever pokes out of the window's corners.
 	local main = New("Frame", {
-		Name = "Window", BackgroundColor3 = "Background", Size = UDim2.fromOffset(width, height),
+		Name = "Window", BackgroundColor3 = "Sidebar", Size = UDim2.fromOffset(width, height),
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ClipsDescendants = true, Parent = root,
 	})
 	local mainCorner = Corner(CurrentTheme.WindowRadius or 14, main)
@@ -2962,7 +2975,7 @@ function Mova:CreateWindow(props)
 	local TOPBAR = 48
 
 	-- topbar
-	local topbar = New("Frame", { Name = "Topbar", BackgroundColor3 = "Sidebar", Size = UDim2.new(1, 0, 0, TOPBAR), Parent = main })
+	local topbar = New("Frame", { Name = "Topbar", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, TOPBAR), Parent = main })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), Parent = topbar })
 	self.Topbar = topbar
 
@@ -2975,7 +2988,6 @@ function Mova:CreateWindow(props)
 		-- accent mark when there is no icon
 		local mark = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(8, 8), Position = UDim2.fromOffset(16, 20), Parent = topbar })
 		Corner(4, mark)
-		Shadow(mark, "Accent", 14, 0.3)
 		titleX = 32
 	end
 	local titleLabel = New("TextLabel", {
@@ -3036,7 +3048,7 @@ function Mova:CreateWindow(props)
 	-- sidebar
 	local body = New("Frame", { Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -TOPBAR), Position = UDim2.fromOffset(0, TOPBAR), Parent = main })
 	self.Body = body
-	local sidebar = New("Frame", { Name = "Sidebar", BackgroundColor3 = "Sidebar", Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
+	local sidebar = New("Frame", { Name = "Sidebar", BackgroundTransparency = 1, Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = sidebar })
 	self.Sidebar = sidebar
 	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -52), Parent = sidebar })
@@ -3046,7 +3058,6 @@ function Mova:CreateWindow(props)
 	-- single accent indicator that glides between tabs (Fluent-style selector)
 	local tabIndicator = New("Frame", { Name = "Indicator", BackgroundColor3 = "Accent", Size = UDim2.fromOffset(3, 0), Position = UDim2.fromOffset(3, 0), ZIndex = 3, Visible = false, Parent = sidebar })
 	Corner(2, tabIndicator)
-	Shadow(tabIndicator, "Accent", 10, 0.4)
 	self.TabIndicator = tabIndicator
 
 	-- player chip at the bottom of the sidebar
@@ -3067,7 +3078,13 @@ function Mova:CreateWindow(props)
 	self.ChipLabel, self.ChipSub = chipLabel, chipSub
 
 	-- content
-	local content = New("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, -sidebarWidth, 1, 0), Position = UDim2.fromOffset(sidebarWidth, 0), ClipsDescendants = true, Parent = body })
+	local content = New("Frame", { Name = "Content", BackgroundColor3 = "Background", Size = UDim2.new(1, -sidebarWidth, 1, 0), Position = UDim2.fromOffset(sidebarWidth, 0), ClipsDescendants = true, Parent = body })
+	local contentCorner = Corner(CurrentTheme.WindowRadius or 14, content)
+	onTheme(contentCorner, function() contentCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
+	-- square off the three inner corners (they sit against the sidebar / topbar, not the window edge)
+	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), Parent = content })
+	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Parent = content })
+	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = content })
 	self.Content = content
 
 	-- search results page
@@ -3156,7 +3173,7 @@ function Mova:CreateWindow(props)
 	end)
 
 	-- veil: a window-coloured sheet above the content; fading it reveals the UI without a CanvasGroup
-	local veil = New("Frame", { Name = "Veil", BackgroundColor3 = "Background", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Visible = false, Parent = main })
+	local veil = New("Frame", { Name = "Veil", BackgroundColor3 = "Sidebar", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Visible = false, Parent = main })
 	local veilCorner = Corner(CurrentTheme.WindowRadius or 14, veil)
 	onTheme(veilCorner, function() veilCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
 	self.Veil = veil
@@ -3327,7 +3344,6 @@ function Window:SelectTab(target)
 	if previous then
 		downwards = (target.Button.LayoutOrder or 0) >= (previous.Button.LayoutOrder or 0)
 		tween(previous.Button, { BackgroundTransparency = 1 }, Motion.base)
-		tween(previous.Stroke, { Transparency = 1 }, Motion.base)
 		tween(previous.Label, { TextColor3 = themeValue("TextDim") }, Motion.base)
 		if previous.Icon then tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.base) end
 		ThemeRegistry[previous.Label] = { TextColor3 = "TextDim" }
@@ -3335,7 +3351,6 @@ function Window:SelectTab(target)
 	-- sidebar: selected pill + gliding indicator
 	tween(target.Hover, { BackgroundTransparency = 1 }, Motion.fast)
 	tween(target.Button, { BackgroundTransparency = 0 }, Motion.base)
-	tween(target.Stroke, { Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
 	tween(target.Label, { TextColor3 = themeValue("Text") }, Motion.base)
 	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Text") }, Motion.base) end
 	ThemeRegistry[target.Label] = { TextColor3 = "Text" }
@@ -3823,7 +3838,6 @@ function Window:_showKeySystem(settings, onSuccess)
 	local head = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
 	local mark = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(10, 10), Position = UDim2.fromOffset(0, 7), Parent = head })
 	Corner(5, mark)
-	Shadow(mark, "Accent", 16, 0.3)
 	New("TextLabel", { Text = tostring(title), Weight = "SemiBold", TextSize = 17, Size = UDim2.new(1, -20, 0, 22), Position = UDim2.fromOffset(20, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = head })
 	New("TextLabel", { Text = tostring(subtitle), TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(1, -20, 0, 14), Position = UDim2.fromOffset(20, 24), TextXAlignment = Enum.TextXAlignment.Left, Parent = head })
 	New("TextLabel", { Text = tostring(note), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 3, Parent = card })
