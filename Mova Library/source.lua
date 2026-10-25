@@ -1677,7 +1677,7 @@ function Element:_fireChanged()
 end
 
 -- Builds the standard card (title + description on the left, control on the right).
-local function buildCard(container, props, kind, controlWidth)
+local function buildCard(container, props, kind, controlWidth, noStack)
 	local name = prop(props, kind, "Name", "name", "Title", "title", "Text")
 	local desc = prop(props, nil, "Description", "description", "Desc", "Info")
 	local icon = prop(props, nil, "Icon", "icon")
@@ -1712,7 +1712,7 @@ local function buildCard(container, props, kind, controlWidth)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = card,
 	})
-	Padding(textHolder, 13, 0, 13, 0)
+	local textPad = Padding(textHolder, 13, 0, 13, 0)
 	List(textHolder, 3)
 
 	local title = New("TextLabel", {
@@ -1758,8 +1758,11 @@ local function buildCard(container, props, kind, controlWidth)
 		Window = container.Window,
 		Card = card,
 		TitleLabel = title,
+		TextPadding = textPad,
 		DescLabel = descLabel,
 		Control = control,
+		Stacked = false,
+		NoStack = noStack and true or false,
 		Blocker = blocker,
 		Stroke = stroke,
 		Hover = overlay,
@@ -1768,6 +1771,40 @@ local function buildCard(container, props, kind, controlWidth)
 		Locked = false,
 		_cleanup = {},
 	}, Element)
+
+	-- Responsive layout (Gen 2's narrow mode): when the card is too tight for the title and the
+	-- control to share a row - a phone, a resized window, a two-column group - the control drops
+	-- under the text and spans the card instead of being drawn over the title. Hysteresis keeps
+	-- it from flapping while the window's open/close scale animation sweeps the width.
+	local cw = controlWidth or 0
+	if cw > 0 then
+		local restingText = textHolder.Size
+		local function applyLayout()
+			if element.NoStack then return end
+			local w = card.AbsoluteSize.X
+			if w <= 0 then return end
+			local room = w - leftPad - 14 - 8 - cw
+			local want = element.Stacked
+			if room < 96 then want = true elseif room > 128 then want = false end
+			if want == element.Stacked then return end
+			element.Stacked = want
+			if want then
+				textHolder.Size = UDim2.new(1, -leftPad - 14, 0, 0)
+				textPad.PaddingBottom = UDim.new(0, 13 + 28 + 10)
+				control.AnchorPoint = Vector2.new(1, 1)
+				control.Position = UDim2.new(1, -14, 1, -12)
+				control.Size = UDim2.new(1, -leftPad - 14, 0, 28)
+			else
+				textHolder.Size = restingText
+				textPad.PaddingBottom = UDim.new(0, 13)
+				control.AnchorPoint = Vector2.new(1, 0)
+				control.Position = UDim2.new(1, -14, 0, 0)
+				control.Size = UDim2.new(0, cw, 1, 0)
+			end
+		end
+		connect(card:GetPropertyChangedSignal("AbsoluteSize"), applyLayout)
+		applyLayout()
+	end
 
 	container.Elements[#container.Elements + 1] = element
 	element.Window._allElements[#element.Window._allElements + 1] = element
@@ -1798,7 +1835,7 @@ end
 
 function Container:CreateButton(props, callback)
 	if typeof(props) == "string" then props = { Name = props, Callback = callback } end
-	local el = buildCard(self, props, "Button", 24)
+	local el = buildCard(self, props, "Button", 24, true) -- a chevron never needs its own row
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 	local arrowHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0, 20, 1, 0), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = el.Control })
 	local arrow = Glyph("chevron-right", arrowHolder, "TextDim", 14, 1.6)
@@ -1828,39 +1865,36 @@ end
 
 function Container:CreateToggle(props)
 	props = props or {}
-	local el = buildCard(self, props, "Toggle", 44)
+	local el = buildCard(self, props, "Toggle", 50)
 	el.Value = prop(props, false, "CurrentValue", "Default", "Value", "default", "value", "Enabled") and true or false
 
 	-- Rayfield Gen 2 switch: the track is a quiet inset that never changes colour; the knob is a wide
 	-- pill that is translucent when off and becomes the accent (with a lighter accent rim) when on.
+	-- Gen 2 geometry: 50x21 track, 25x17 knob, 3px inset at either end, both full pills.
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(46, 22), AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(50, 21), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
-	Corner(11, track)
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
 	local trackStroke = Stroke(track)
 	local knob = New("Frame", {
-		BackgroundColor3 = "Knob", BackgroundTransparency = 0.45, Size = UDim2.fromOffset(22, 15), AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundColor3 = "Knob", BackgroundTransparency = 0.5, Size = UDim2.fromOffset(25, 17), AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
 	})
-	Corner(8, knob)
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
 	local knobStroke = Stroke(knob, "Text", 1, 0.7)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 
-	local KNOB_ON, KNOB_OFF = UDim2.new(1, -25, 0.5, 0), UDim2.new(0, 3, 0.5, 0)
+	local KNOB_ON, KNOB_OFF = UDim2.new(1, -28, 0.5, 0), UDim2.new(0, 3, 0.5, 0)
 	local function render(animate)
-		local t = animate and 0.45 or 0
+		-- one 0.6s Expo tween, like Gen 2: no stretch/overshoot, so the knob never leaves the track
+		local t = animate and 0.6 or 0
 		if el.Value then
 			tween(knob, { Position = KNOB_ON, BackgroundColor3 = themeValue("Accent"), BackgroundTransparency = 0 }, t, Motion.Expo, Motion.Out)
 			tween(knobStroke, { Color = themeValue("AccentHover"), Transparency = 0 }, t, Motion.Expo, Motion.Out)
 		else
-			tween(knob, { Position = KNOB_OFF, BackgroundColor3 = themeValue("Knob"), BackgroundTransparency = 0.45 }, t, Motion.Expo, Motion.Out)
+			tween(knob, { Position = KNOB_OFF, BackgroundColor3 = themeValue("Knob"), BackgroundTransparency = 0.5 }, t, Motion.Expo, Motion.Out)
 			tween(knobStroke, { Color = themeValue("Text"), Transparency = 0.7 }, t, Motion.Expo, Motion.Out)
-		end
-		if animate then
-			-- stretch while travelling, settle with a small overshoot
-			tween(knob, { Size = UDim2.fromOffset(26, 15) }, 0.1, Motion.Quint, Motion.Out)
-			task.delay(0.1, function() tween(knob, { Size = UDim2.fromOffset(22, 15) }, 0.3, Motion.Back, Motion.Out) end)
 		end
 		-- keep registry in sync so theme swaps land on the right colour
 		ThemeRegistry[knob] = { BackgroundColor3 = el.Value and "Accent" or "Knob" }
@@ -1931,22 +1965,27 @@ function Container:CreateSlider(props)
 		if increment < 1 and decimals == 0 then decimals = 2 end
 	end
 
-	local el = buildCard(self, props, "Slider", 0)
+	-- the value box is sized for the longest value it can show, so "100%" and "1000 studs" both fit
+	local longest = math.max(#(prefix .. formatNumber(max, decimals) .. suffix), #(prefix .. formatNumber(min, decimals) .. suffix))
+	local boxWidth = clamp(longest * 7 + 18, 56, 120)
+
+	local el = buildCard(self, props, "Slider", boxWidth, true) -- the slider has its own two-row layout
 	el.Min, el.Max, el.Increment, el.Decimals = min, max, increment, decimals
 	el.Suffix, el.Prefix = suffix, prefix
 	el.Value = clamp(prop(props, min, "CurrentValue", "Default", "Value", "default", "value"), min, max)
 
-	-- make room for the track under the text
-	el.Card.Size = UDim2.new(1, 0, 0, 64)
-	el.SizeConstraint.MinSize = Vector2.new(0, 64)
-	local textHolder = el.TitleLabel.Parent
-	textHolder.Size = UDim2.new(1, -100 - 28, 0, 0)
+	-- Layout (Gen 2's narrow slider): title + value box share the top row, the track gets a full
+	-- row of its own underneath. The text block reserves the track row in its bottom padding, so a
+	-- description pushes the track down instead of running into it.
+	el.Card.Size = UDim2.new(1, 0, 0, 76)
+	el.SizeConstraint.MinSize = Vector2.new(0, 76)
+	el.TextPadding.PaddingBottom = UDim.new(0, 13 + 32)
 
 	local valueBox = New("TextBox", {
 		Text = "", TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
 		BackgroundColor3 = "Field", BackgroundTransparency = 0,
-		Size = UDim2.fromOffset(64, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 10),
-		TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, ZIndex = 2, Parent = el.Card,
+		Size = UDim2.new(1, 0, 0, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 10),
+		TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, ZIndex = 2, Parent = el.Control,
 	})
 	Corner(7, valueBox)
 	local valueStroke = Stroke(valueBox)
@@ -1957,9 +1996,11 @@ function Container:CreateSlider(props)
 	-- rides the fill's leading edge (it lives inside the fill, so the fill carries it). While held
 	-- the pill grows a touch, ghosts to 70% and shows a thin white ring.
 	local HANDLE_REST, HANDLE_HELD = Vector2.new(35, 20), Vector2.new(41, 22)
+	-- the pill is centred on the track's ends, so the track is inset by more than half a pill: at
+	-- 0% / 100% the pill stays 4px clear of the card edge instead of sitting on the border
 	local trackHolder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -36, 0, 22), AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 18, 1, -6), ZIndex = 2, Parent = el.Card,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -44, 0, 22), AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 22, 1, -11), ZIndex = 2, Parent = el.Card,
 	})
 	local track = New("Frame", {
 		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 14), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
@@ -2787,7 +2828,7 @@ end
 
 function Container:CreateProgress(props)
 	props = props or {}
-	local el = buildCard(self, props, "Progress", 60)
+	local el = buildCard(self, props, "Progress", 60, true)
 	el.Min = prop(props, 0, "Min", "min")
 	el.Max = prop(props, 100, "Max", "max")
 	el.Value = clamp(prop(props, el.Min, "Value", "Default", "value", "default"), el.Min, el.Max)
@@ -2796,6 +2837,7 @@ function Container:CreateProgress(props)
 
 	el.Card.Size = UDim2.new(1, 0, 0, 58)
 	el.SizeConstraint.MinSize = Vector2.new(0, 58)
+	el.TextPadding.PaddingBottom = UDim.new(0, 13 + 14) -- reserve the bar row so a description can't run into it
 	local valueLabel = New("TextLabel", {
 		Text = "", TextSize = 12, TextColor3 = "TextDim", Weight = "SemiBold", Size = UDim2.fromOffset(60, 20), AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 12), TextXAlignment = Enum.TextXAlignment.Right, Visible = showValue, Parent = el.Card,
