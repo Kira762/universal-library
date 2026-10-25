@@ -1379,7 +1379,7 @@ function Mova:Notify(props)
 	local cardStroke = Stroke(card)
 	cardStroke.Transparency = 1
 	Shadow(card, "Shadow", 32, 0.4)
-	Padding(card, 12, 14, 12, 14)
+	Padding(card, 11, 14, 11, 14)
 	-- Time left is shown as a quiet wash of the type colour behind the text that drains from
 	-- right to left (WindUI's duration fill) instead of a hairline under the card. It is a child
 	-- of the card, so the padding offsets it: counter the padding to cover the whole card.
@@ -1387,9 +1387,14 @@ function Mova:Notify(props)
 	if duration and duration > 0 then
 		wash = New("Frame", {
 			BackgroundColor3 = accentKey, BackgroundTransparency = 0.9,
-			Position = UDim2.fromOffset(-14, -12), Size = UDim2.new(1, 28, 1, 24), ZIndex = 0, Parent = card,
+			Position = UDim2.fromOffset(-14, -11), Size = UDim2.new(1, 28, 1, 22), ZIndex = 0, Parent = card,
 		})
 		Corner(12, wash)
+		-- the trailing edge dissolves instead of ending in a second rounded "card" edge
+		New("UIGradient", {
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(0.7, 0), NumberSequenceKeypoint.new(1, 1) }),
+			Parent = wash,
+		})
 	end
 
 	local iconImage = resolveIcon(icon)
@@ -1425,7 +1430,7 @@ function Mova:Notify(props)
 	end
 	if content and content ~= "" then
 		New("TextLabel", {
-			Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
+			Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.1,
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 			LayoutOrder = 2, Parent = body,
@@ -1449,7 +1454,9 @@ function Mova:Notify(props)
 	end
 
 	if typeof(actions) == "table" and #actions > 0 then
-		local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = body })
+		-- compact action row: 22px chips with a 4px gap above the text, so a toast with buttons is
+		-- only ~26px taller than one without
+		local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3, Parent = body })
 		List(row, 6, Enum.FillDirection.Horizontal)
 		Padding(row, 4, 0, 0, 0)
 		for i, action in ipairs(actions) do
@@ -1459,10 +1466,10 @@ function Mova:Notify(props)
 				BackgroundColor3 = i == 1 and "Accent" or "SurfaceHover",
 				TextColor3 = i == 1 and "OnAccent" or "Text",
 				BackgroundTransparency = 0,
-				Size = UDim2.fromOffset(math.max(60, textWidth(label, 12) + 24), 26),
+				Size = UDim2.fromOffset(math.max(52, textWidth(label, 12) + 20), 22),
 				LayoutOrder = i, Parent = row,
 			})
-			Corner(8, btn)
+			Corner(7, btn)
 			local btnHover = hoverOverlay(btn)
 			hoverFx(btn, btnHover, nil, { strength = 0.88 })
 			connect(btn.MouseButton1Click, function()
@@ -1478,7 +1485,7 @@ function Mova:Notify(props)
 	local hovered = false
 	local tapZone = New("TextButton", {
 		Text = "", BackgroundTransparency = 1, AutoButtonColor = false,
-		Position = UDim2.fromOffset(-14, -12), Size = UDim2.new(1, 28, 1, 24), ZIndex = 0, Parent = card,
+		Position = UDim2.fromOffset(-14, -11), Size = UDim2.new(1, 28, 1, 22), ZIndex = 0, Parent = card,
 	})
 	local tapConns = {}
 	tapConns[1] = tapZone.MouseEnter:Connect(function() hovered = true end)
@@ -1494,7 +1501,7 @@ function Mova:Notify(props)
 				if type(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
 				if not hovered then elapsed = elapsed + dt end
 				local left = clamp(1 - elapsed / duration, 0, 1)
-				if wash then wash.Size = UDim2.new(left, 28 * left, 1, 24) end
+				if wash then wash.Size = UDim2.new(left, 28 * left, 1, 22) end
 				if elapsed >= duration then break end
 			end
 			if not closed then close() end
