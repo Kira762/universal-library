@@ -120,7 +120,7 @@ All option tables accept several aliases (Rayfield, Linoria/Obsidian and lower-c
 | `Translations`, `Locale` | table, string | — | See localisation |
 | `SettingsTab` | bool | `true` | Built-in Settings tab (theme, toggle key, configs, unload) |
 | `Tags` | table | — | Topbar pills after the title, e.g. `{ { Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255,175,15) }, { Text = "Online", Dot = true, Color = "Success" } }` — see *Tags* below |
-| `Profile` | table / `false` | — | Profile card at the base of the sidebar: `{ Name, Subtitle, Image }` overrides the local player's display name / `@username` / headshot; `false` removes the card and the tab list takes its height. Clicking the card opens Settings. |
+| `Profile` | table / `false` | — | Profile card at the base of the sidebar: `{ Name, Subtitle, Image }` overrides the local player's display name / `@username` / headshot; `false` removes it and the tab list takes its height. Purely informational — not a control. |
 
 **Window methods**: `CreateTab(opts | name, icon)`, `SelectTab(tab | name | index)`, `Show()`, `Hide()`, `Toggle()`, `SetVisible(bool)`, `IsVisible()`, `ToggleMinimise()`, `SetTitle()`, `SetSubtitle()`, `SetProfile{ Name, Subtitle, Image }`, `SetProfileVisible(bool)`, `CreateTag(opts)`, `SetToggleKey(key)`, `ChangeTheme(name | table)`, `Notify(opts)`, `Dialog(opts)`, `Toast(text)`, `Get(flag)`, `Set(flag, value, silent)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`, `SetAutoload(name | nil)`, `Destroy()`.
 Aliases: `AddTab`, `Navigate`, `ToggleHide`, `SetVisibility`, `ToggleMinimize`, `Minimize`, `ModifyTheme`, `SetTheme`, `Popup`, `Unload`, `Save`, `Load`.
