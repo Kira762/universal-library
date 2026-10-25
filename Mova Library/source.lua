@@ -2150,29 +2150,33 @@ end
 
 -- Toggle --------------------------------------------------------------------------------------
 
+local TOGGLE_W, TOGGLE_H, KNOB_W, KNOB_H, KNOB_INSET = 44, 20, 20, 14, 3
+
 function Container:CreateToggle(props)
 	props = props or {}
-	local el = buildCard(self, props, "Toggle", 50)
+	local el = buildCard(self, props, "Toggle", TOGGLE_W)
 	el.Value = prop(props, false, "CurrentValue", "Default", "Value", "default", "value", "Enabled") and true or false
 
 	-- Rayfield Gen 2 switch: the track is a quiet inset that never changes colour; the knob is a wide
 	-- pill that is translucent when off and becomes the accent (with a lighter accent rim) when on.
-	-- Gen 2 geometry: 50x21 track, 25x17 knob, 3px inset at either end, both full pills.
+	-- Gen 2 draws it at 50x21 with a 25x17 knob; Mova keeps the proportions but trims it to 44x20
+	-- with a 20x14 knob (between Fluent's 36x18/14 and Gen 2) so the knob reads as a handle, not a
+	-- slab, on a 50px card. 3px inset at either end, both full pills.
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(50, 21), AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(TOGGLE_W, TOGGLE_H), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
 	local trackStroke = Stroke(track)
 	local knob = New("Frame", {
-		BackgroundColor3 = "Knob", BackgroundTransparency = 0.5, Size = UDim2.fromOffset(25, 17), AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
+		BackgroundColor3 = "Knob", BackgroundTransparency = 0.5, Size = UDim2.fromOffset(KNOB_W, KNOB_H), AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, KNOB_INSET, 0.5, 0), ZIndex = 2, Parent = track,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
 	local knobStroke = Stroke(knob, "Text", 1, 0.7)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 
-	local KNOB_ON, KNOB_OFF = UDim2.new(1, -28, 0.5, 0), UDim2.new(0, 3, 0.5, 0)
+	local KNOB_ON, KNOB_OFF = UDim2.new(1, -(KNOB_W + KNOB_INSET), 0.5, 0), UDim2.new(0, KNOB_INSET, 0.5, 0)
 	local function render(animate)
 		-- one 0.6s Expo tween, like Gen 2: no stretch/overshoot, so the knob never leaves the track
 		local t = animate and 0.6 or 0
