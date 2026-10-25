@@ -288,7 +288,7 @@ Mova.Themes.Dark = {
 	OnAccent = C(255, 255, 255),
 	Text = C(240, 240, 245),
 	TextDim = C(160, 162, 176),
-	Placeholder = C(120, 122, 136),
+	Placeholder = C(160, 162, 176),
 	Divider = C(48, 48, 56),
 	Shadow = C(0, 0, 0),
 	Knob = C(228, 228, 235),
@@ -310,6 +310,8 @@ Mova.Themes.Dark = {
 local function derive(base, overrides)
 	local t = shallowCopy(base)
 	for k, v in pairs(overrides) do t[k] = v end
+	-- placeholder text must stay readable on that theme's fields: follow TextDim unless set explicitly
+	if overrides.TextDim and not overrides.Placeholder then t.Placeholder = overrides.TextDim end
 	return t
 end
 
@@ -329,7 +331,7 @@ Mova.Themes.Mono = derive(Mova.Themes.Dark, {
 	OnAccent = C(18, 18, 20),
 	Text = C(238, 238, 240),
 	TextDim = C(142, 142, 150),
-	Placeholder = C(104, 104, 112),
+	Placeholder = C(142, 142, 150),
 	Knob = C(236, 236, 240),
 	Track = C(48, 48, 54),
 	Field = C(38, 38, 43),
@@ -352,7 +354,7 @@ Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	AccentHover = C(90, 118, 250),
 	Text = C(25, 25, 30),
 	TextDim = C(90, 93, 106),
-	Placeholder = C(140, 142, 155),
+	Placeholder = C(90, 93, 106),
 	Divider = C(218, 218, 226),
 	Shadow = C(120, 120, 140),
 	Knob = C(255, 255, 255),
@@ -388,6 +390,7 @@ Mova.Themes.Ocean = derive(Mova.Themes.Dark, {
 	AccentHover = C(30, 210, 190),
 	OnAccent = C(5, 25, 25),
 	Field = C(44, 76, 88),
+	TextDim = C(178, 196, 206),
 	Track = C(52, 88, 102),
 })
 
@@ -445,7 +448,7 @@ Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 	AccentHover = C(216, 185, 252),
 	OnAccent = C(30, 30, 46),
 	Text = C(205, 214, 244),
-	TextDim = C(166, 173, 200),
+	TextDim = C(180, 186, 212),
 	Field = C(70, 72, 100),
 	Track = C(80, 82, 110),
 })
@@ -937,14 +940,34 @@ local function hoverFx(trigger, overlay, stroke, opts)
 end
 
 -- Press: cards shrink 8px symmetrically (pages centre their children) and spring back.
+local Pressing = {} -- card -> resting size while a press animation runs
 local function pressFx(card)
-	local size = card.Size
-	tween(card, { Size = UDim2.new(size.X.Scale, -8, size.Y.Scale, size.Y.Offset) }, 0.08, Motion.Quint, Motion.Out)
+	local size = Pressing[card] or card.Size
+	Pressing[card] = size
+	tween(card, { Size = UDim2.new(size.X.Scale, size.X.Offset - 8, size.Y.Scale, size.Y.Offset) }, 0.08, Motion.Quint, Motion.Out)
 	task.delay(0.09, function()
 		if card.Parent then
-			tween(card, { Size = UDim2.new(size.X.Scale, 0, size.Y.Scale, size.Y.Offset) }, 0.45, Motion.Expo, Motion.Out)
+			tween(card, { Size = size }, 0.45, Motion.Expo, Motion.Out)
 		end
+		task.delay(0.45, function() if Pressing[card] == size then Pressing[card] = nil end end)
 	end)
+end
+
+-- Touch-dragging a control inside a ScrollingFrame also scrolls the page; freeze every ancestor
+-- ScrollingFrame for the duration of the gesture and hand back an unlock.
+local function lockScroll(obj)
+	local locked = {}
+	local p = obj and obj.Parent
+	while p do
+		if p:IsA("ScrollingFrame") and p.ScrollingEnabled then
+			p.ScrollingEnabled = false
+			locked[#locked + 1] = p
+		end
+		p = p.Parent
+	end
+	return function()
+		for _, sf in ipairs(locked) do pcall(function() sf.ScrollingEnabled = true end) end
+	end
 end
 
 -- Quick white flash used for button taps.
@@ -1053,6 +1076,7 @@ local function keyFromName(name)
 end
 
 local KeybindListening = false
+local ActiveKeybindListener = nil -- stop() of the field currently waiting for a key
 
 local function inputToKey(input)
 	if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -1157,8 +1181,9 @@ local function positionPopup(frame, anchor, width, height)
 	if y + height > vp.Y - 8 then
 		y = ap.Y - height - 6 + inset
 	end
+	local top = topInset() + 8
 	x = clamp(x, 8, math.max(8, vp.X - width - 8))
-	y = clamp(y, 8, math.max(8, vp.Y - height - 8))
+	y = clamp(y, top, math.max(top, vp.Y - height - 8))
 	frame.Position = UDim2.fromOffset(x, y)
 	frame.Size = UDim2.fromOffset(width, height)
 end
@@ -1214,9 +1239,12 @@ local function makeDraggable(frame, handle, options)
 			local inset = topInset()
 			startFrame = UDim2.fromOffset(ap.X + size.X * anchor.X, ap.Y + inset + size.Y * anchor.Y)
 			frame.Position = startFrame
-			conns[#conns + 1] = connect(input.Changed, function()
+			if options.onDragStart then options.onDragStart() end
+			local changed
+			changed = input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
+					if changed then changed:Disconnect() changed = nil end
 					if options.onDragEnd then options.onDragEnd(frame.Position) end
 				end
 			end)
@@ -1678,7 +1706,7 @@ local function buildCard(container, props, kind, controlWidth)
 	local textHolder = New("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(leftPad, 0),
-		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - 14, 0, 0),
+		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - 14 - ((controlWidth or 0) > 0 and 8 or 0), 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = card,
 	})
@@ -2013,11 +2041,15 @@ function Container:CreateSlider(props)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			setKnobState("drag")
+			local unlock = input.UserInputType == Enum.UserInputType.Touch and lockScroll(interact) or nil
 			fromInput(input.Position)
-			connect(input.Changed, function()
+			local changed
+			changed = input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
 					setKnobState("idle")
+					if unlock then unlock() end
+					if changed then changed:Disconnect() changed = nil end
 				end
 			end)
 		end
@@ -2149,23 +2181,15 @@ function Container:CreateDropdown(props)
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 14, 1.6)
 
 	local function display()
-		if el.Multi then
-			if #el.Value == 0 then
-				valueLabel.Text = placeholder
-				valueLabel.TextColor3 = themeValue("Placeholder")
-			else
-				valueLabel.Text = table.concat(el.Value, ", ")
-				valueLabel.TextColor3 = themeValue("Text")
-			end
+		local empty = el.Multi and (#el.Value == 0) or (not el.Multi and el.Value == nil)
+		if empty then
+			valueLabel.Text = placeholder
+		elseif el.Multi then
+			valueLabel.Text = table.concat(el.Value, ", ")
 		else
-			if el.Value == nil then
-				valueLabel.Text = placeholder
-				valueLabel.TextColor3 = themeValue("Placeholder")
-			else
-				valueLabel.Text = tostring(el.Value)
-				valueLabel.TextColor3 = themeValue("Text")
-			end
+			valueLabel.Text = tostring(el.Value)
 		end
+		bindTheme(valueLabel, { TextColor3 = empty and "Placeholder" or "Text" })
 	end
 
 	local open = false
@@ -2395,6 +2419,7 @@ function Container:_createKeybind(props, attachedToggle)
 		if changed and not silent then
 			safeCallback(self.ChangedCallback, key, self)
 			if self.CallOnChange then safeCallback(self.Callback, key, self) end
+			if self.Mode == "Always" and key then self.State = true safeCallback(self.Callback, true, self) end
 		end
 		if changed then self:_fireChanged() end
 		return self
@@ -2407,12 +2432,22 @@ function Container:_createKeybind(props, attachedToggle)
 		if self._attached then self.State = self._attached.Value end
 	end
 
+	local function setListening(state)
+		listening = state
+		if state then
+			if ActiveKeybindListener and ActiveKeybindListener ~= setListening then ActiveKeybindListener(false) end
+			ActiveKeybindListener = setListening
+		elseif ActiveKeybindListener == setListening then
+			ActiveKeybindListener = nil
+		end
+		KeybindListening = ActiveKeybindListener ~= nil
+		tween(stroke, { Color = state and themeValue("Accent") or themeValue("Stroke"), Transparency = state and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
+		render()
+	end
+	el._cleanup[#el._cleanup + 1] = function() if listening then setListening(false) end end
 	connect(field.MouseButton1Click, function()
 		if el.Locked then return end
-		listening = not listening
-		KeybindListening = listening
-		tween(stroke, { Color = listening and themeValue("Accent") or themeValue("Stroke"), Transparency = listening and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
-		render()
+		setListening(not listening)
 	end)
 
 	local function fire(state)
@@ -2429,9 +2464,7 @@ function Container:_createKeybind(props, attachedToggle)
 			local key = inputToKey(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then return end
 			if key then
-				listening = false
-				KeybindListening = false
-				tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+				setListening(false)
 				if key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 					el:Set(nil)
 				elseif not indexOf(el.Blacklist, key.Name) then
@@ -2502,6 +2535,7 @@ function Container:CreateColorPicker(props)
 	local open = false
 	local panel = nil
 	local panelRefresh = nil
+	local dragTarget = nil
 
 	local function render()
 		el.Value = Color3.fromHSV(h, s, v)
@@ -2540,6 +2574,8 @@ function Container:CreateColorPicker(props)
 		if not open then return end
 		open = false
 		tween(swatchStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+		if el._panelConn then pcall(function() el._panelConn:Disconnect() end) el._panelConn = nil end
+		dragTarget = nil
 		if panel then
 			local p = panel
 			panel = nil
@@ -2566,16 +2602,20 @@ function Container:CreateColorPicker(props)
 		tween(panel, { Size = UDim2.fromOffset(width, height), BackgroundTransparency = 0 }, 0.3, Motion.Expo, Motion.Out)
 
 		-- saturation / value square
+		-- a UIGradient multiplies its frame's colour, so the square is white, the hue fades in over it
+		-- from left to right, and black fades in over both from top to bottom
 		local sv = New("TextButton", {
-			Text = "", BackgroundColor3 = Color3.fromHSV(h, 1, 1), BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 140), ZIndex = 61, Parent = panel,
+			Text = "", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 140), ZIndex = 61, Parent = panel,
 		})
 		Corner(6, sv)
-		New("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(1, 1, 1)), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }), Parent = sv })
-		local dark = New("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 62, Parent = sv })
+		local hueLayer = New("Frame", { BackgroundColor3 = Color3.fromHSV(h, 1, 1), Size = UDim2.fromScale(1, 1), ZIndex = 62, Parent = sv })
+		Corner(6, hueLayer)
+		New("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }), Parent = hueLayer })
+		local dark = New("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 63, Parent = sv })
 		Corner(6, dark)
 		New("UIGradient", { Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.new(0, 0, 0)), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }), Rotation = 90, Parent = dark })
 		local svCursor = New("Frame", {
-			BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.fromOffset(10, 10), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 63, Parent = sv,
+			BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.fromOffset(10, 10), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 64, Parent = sv,
 		})
 		Corner(5, svCursor)
 		New("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Parent = svCursor })
@@ -2614,7 +2654,7 @@ function Container:CreateColorPicker(props)
 		local rgbBox = New("TextBox", { Text = "", TextSize = 13, Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(6, 0), ZIndex = 62, TextXAlignment = Enum.TextXAlignment.Left, Parent = rgbField })
 
 		local function refresh()
-			sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+			hueLayer.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			svCursor.Position = UDim2.new(s, 0, 1 - v, 0)
 			hueCursor.Position = UDim2.new(h, 0, 0.5, 0)
 			hexBox.Text = "#" .. el.Value:ToHex():upper()
@@ -2626,7 +2666,6 @@ function Container:CreateColorPicker(props)
 		end
 		panelRefresh = refresh
 
-		local dragTarget = nil
 		local function applyDrag(pos)
 			if dragTarget == "sv" then
 				local p, sz = sv.AbsolutePosition, sv.AbsoluteSize
@@ -2647,8 +2686,12 @@ function Container:CreateColorPicker(props)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					dragTarget = which
 					applyDrag(input.Position)
-					connect(input.Changed, function()
-						if input.UserInputState == Enum.UserInputState.End then dragTarget = nil end
+					local changed
+					changed = input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							dragTarget = nil
+							if changed then changed:Disconnect() changed = nil end
+						end
 					end)
 				end
 			end
@@ -2656,11 +2699,12 @@ function Container:CreateColorPicker(props)
 		connect(sv.InputBegan, beginDrag("sv"))
 		connect(hue.InputBegan, beginDrag("hue"))
 		if alphaBar then connect(alphaBar.InputBegan, beginDrag("alpha")) end
-		connect(UserInputService and UserInputService.InputChanged, function(input)
+		local moveConn = UserInputService and UserInputService.InputChanged:Connect(function(input)
 			if dragTarget and panel and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				applyDrag(input.Position)
 			end
 		end)
+		el._panelConn = moveConn
 		connect(hexBox.FocusLost, function()
 			local ok, c = pcall(Color3.fromHex, hexBox.Text)
 			if ok then el:Set(c) else refresh() end
@@ -2807,7 +2851,7 @@ function Container:CreateSection(props)
 	end
 	local holder = New("Frame", {
 		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, 28),
-		ClipsDescendants = true, Parent = frame,
+		Parent = frame,
 	})
 	local holderLayout = List(holder, 6, nil, Enum.HorizontalAlignment.Center)
 
@@ -2828,6 +2872,7 @@ function Container:CreateSection(props)
 		local ok, contentHeight = pcall(function() return holderLayout.AbsoluteContentSize.Y end)
 		contentHeight = (ok and contentHeight) or holder.AbsoluteSize.Y
 		tween(chevron, { Rotation = state and -90 or 0 }, Motion.base, Motion.Back, Motion.Out)
+		holder.ClipsDescendants = true -- only while the height animates; clipping would eat the card outlines
 		if state then
 			holder.AutomaticSize = Enum.AutomaticSize.None
 			holder.Size = UDim2.new(1, 0, 0, contentHeight)
@@ -2846,8 +2891,9 @@ function Container:CreateSection(props)
 				holder.AutomaticSize = Enum.AutomaticSize.None
 				holder.Size = UDim2.new(1, 0, 0, 0)
 				tween(holder, { Size = UDim2.new(1, 0, 0, contentHeight) }, 0.35, Motion.Expo, Motion.Out)
-				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then holder.AutomaticSize = Enum.AutomaticSize.Y end end)
+				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then holder.AutomaticSize = Enum.AutomaticSize.Y holder.ClipsDescendants = false end end)
 			end
+			if instant or contentHeight <= 0 then holder.ClipsDescendants = false end
 		end
 		return self
 	end
@@ -3029,7 +3075,10 @@ function Tab:Destroy()
 	self.Page:Destroy()
 	local i = indexOf(self.Window.Tabs, self)
 	if i then table.remove(self.Window.Tabs, i) end
-	if self.Window.CurrentTab == self and self.Window.Tabs[1] then self.Window:SelectTab(self.Window.Tabs[1]) end
+	if self.Window.CurrentTab == self then
+		self.Window.CurrentTab = nil
+		if self.Window.Tabs[1] then self.Window:SelectTab(self.Window.Tabs[1]) end
+	end
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -3138,14 +3187,14 @@ function Mova:CreateWindow(props)
 		titleX = 32
 	end
 	local titleLabel = New("TextLabel", {
-		Weight = "SemiBold", TextSize = 15, Size = UDim2.new(0, 260, 0, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 8 or 15),
+		Weight = "SemiBold", TextSize = 15, Size = UDim2.new(1, -titleX - 120, 0, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 8 or 15),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 	})
 	bindText(titleLabel, tostring(self.Name))
 	self.TitleLabel = titleLabel
 	if self.Subtitle then
 		local sub = New("TextLabel", {
-			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(0, 260, 0, 14), Position = UDim2.fromOffset(titleX, 26),
+			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(1, -titleX - 120, 0, 14), Position = UDim2.fromOffset(titleX, 26),
 			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 		})
 		bindText(sub, tostring(self.Subtitle))
@@ -3251,7 +3300,7 @@ function Mova:CreateWindow(props)
 
 	-- resize handle (desktop)
 	local resizeHandle = New("TextButton", {
-		Text = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0), ZIndex = 10, Parent = main,
+		Text = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0), ZIndex = 10, Visible = not IsMobile, Parent = main,
 	})
 	local resizeGlyph = Glyph("resize", resizeHandle, "TextDim", 12, 1.4)
 	resizeGlyph.Position = UDim2.new(0.5, -3, 0.5, -3)
@@ -3287,8 +3336,8 @@ function Mova:CreateWindow(props)
 	-- Activated also covers touch taps and gamepad; Show() is idempotent so firing twice is harmless
 	pcall(function() connect(pill.Activated, pillTapped) end)
 
-	-- drag the window by its topbar
-	makeDraggable(main, topbar, {})
+	-- drag the window by its topbar (open dropdowns / pickers would be left floating, so they close)
+	makeDraggable(main, topbar, { onDragStart = closePopup })
 
 	-- wire topbar
 	connect(closeBtn.MouseButton1Click, function() self:Hide() end)
@@ -3299,7 +3348,7 @@ function Mova:CreateWindow(props)
 		if state then
 			searchHolder.Visible = true
 			tintGlyph(searchGlyph, themeValue("Accent"))
-			tween(searchHolder, { Size = UDim2.fromOffset(math.min(220, width - 300), 30) }, 0.3, Motion.Expo, Motion.Out)
+			tween(searchHolder, { Size = UDim2.fromOffset(clamp(width - 420, 120, 220), 30) }, 0.3, Motion.Expo, Motion.Out)
 			task.defer(function() pcall(function() searchBox:CaptureFocus() end) end)
 		else
 			searchBox.Text = ""
@@ -3329,6 +3378,13 @@ function Mova:CreateWindow(props)
 		local w = math.min(self.Size.X, v.X - 24)
 		local h = math.min(self.Size.Y, v.Y - 24)
 		main.Size = UDim2.fromOffset(w, h)
+		-- a dragged window keeps an offset position; pull it back inside the new viewport
+		local pos = main.Position
+		if pos.X.Scale == 0 and pos.Y.Scale == 0 then
+			local x = clamp(pos.X.Offset, w * 0.5, math.max(w * 0.5, v.X - w * 0.5))
+			local y = clamp(pos.Y.Offset, h * 0.5 + topInset(), math.max(h * 0.5 + topInset(), v.Y - h * 0.5))
+			main.Position = UDim2.fromOffset(x, y)
+		end
 	end)
 
 	-- veil: a window-coloured sheet above the content; fading it reveals the UI without a CanvasGroup
@@ -3384,6 +3440,10 @@ function Window:_finishSetup(props)
 	end
 	task.defer(function()
 		if self.Destroyed then return end
+		if self.ConfigEnabled then
+			local saved = FS.isfile(self.ConfigFolder .. "/theme.txt") and trim(FS.readfile(self.ConfigFolder .. "/theme.txt") or "") or ""
+			if saved ~= "" and Mova.Themes[saved] then Mova:SetTheme(saved, false) end
+		end
 		if self._buildSettings then self:_createSettingsTab() end
 		if self.ConfigEnabled and self._autoLoad then
 			local auto = self:_readAutoload()
@@ -3463,12 +3523,11 @@ function Window:CreateTab(props, icon)
 		local idx = #self.Tabs
 		label.TextTransparency = 1
 		if tab.Icon then tab.Icon.ImageTransparency = 1 end
-		button.Position = UDim2.fromOffset(-12, 0)
+		label.Position = UDim2.fromOffset(labelX - 12, 0)
 		task.delay(0.2 + math.min(idx, 8) * 0.045, function()
 			if self.Destroyed then return end
-			tween(label, { TextTransparency = 0 }, 0.35, Motion.Quint, Motion.Out)
+			tween(label, { TextTransparency = 0, Position = UDim2.fromOffset(labelX, 0) }, 0.45, Motion.Expo, Motion.Out)
 			if tab.Icon then tween(tab.Icon, { ImageTransparency = 0 }, 0.35, Motion.Quint, Motion.Out) end
-			tween(button, { Position = UDim2.fromOffset(0, 0) }, 0.45, Motion.Expo, Motion.Out)
 		end)
 	end
 
@@ -3666,7 +3725,7 @@ function Window:ToggleMinimise()
 	else
 		self.Body.Visible = true
 		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, 0.35, Motion.Expo, Motion.InOut)
-		task.delay(0.35, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = true end end)
+		task.delay(0.35, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = not IsMobile end end)
 	end
 end
 Window.ToggleMinimize = Window.ToggleMinimise
@@ -3706,11 +3765,14 @@ function Window:Destroy()
 	closePopup()
 	if self._autoSaveThread then pcall(task.cancel, self._autoSaveThread) end
 	for _, el in ipairs(self._allElements) do
+		el.Destroyed = true
+		if el._cleanup then for _, fn in ipairs(el._cleanup) do pcall(fn) end end
 		if el.Flag then
 			if Mova.Options[el.Flag] == el then Mova.Options[el.Flag] = nil end
 			if Mova.Toggles[el.Flag] == el then Mova.Toggles[el.Flag] = nil end
 		end
 	end
+	KeybindListening = false
 	self.Main:Destroy()
 	self.Pill:Destroy()
 	local i = indexOf(Mova.Windows, self)
@@ -3842,8 +3904,14 @@ function Window:_createSettingsTab()
 	local appearance = tab:CreateSection({ Name = "Appearance" })
 	local names = Mova:GetThemeNames()
 	appearance:CreateDropdown({
-		Name = "Theme", Description = "Applies instantly to every window.", Options = names, Default = CurrentTheme.Name, Save = false,
-		Callback = function(v) if v then Mova:SetTheme(v) end end,
+		Name = "Theme", Description = "Applies instantly to every window and is remembered.", Options = names, Default = CurrentTheme.Name, Save = false, AllowNone = false,
+		Callback = function(v)
+			if not v then return end
+			Mova:SetTheme(v)
+			if self.ConfigEnabled and FS.ensureFolder(SETTINGS_FOLDER) and FS.ensureFolder(self.ConfigFolder) then
+				FS.writefile(self.ConfigFolder .. "/theme.txt", tostring(v))
+			end
+		end,
 	})
 	if not IsMobile then
 		self._toggleKeybind = appearance:CreateKeybind({

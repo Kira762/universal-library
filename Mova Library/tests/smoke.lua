@@ -109,6 +109,36 @@ test("Toggle + flags + attached keybind", function()
 	eq(log[#log], "changed:false")
 end)
 
+test("Only one keybind field listens at a time; a destroyed window stops its keybinds", function()
+	local W2 = Mova:CreateWindow({ Name = "Second", Theme = "Dark" })
+	local T2 = W2:CreateTab("T")
+	local fired = 0
+	local a = T2:CreateKeybind({ Name = "A", Default = "F", Callback = function() fired = fired + 1 end })
+	local b = T2:CreateKeybind({ Name = "B", Default = "G", Callback = function() end })
+	local fieldA = mock.find(a.Card, function(x) return x.ClassName == "TextButton" and x ~= a.Blocker end)
+	local fieldB = mock.find(b.Card, function(x) return x.ClassName == "TextButton" and x ~= b.Blocker end)
+	mock.click(fieldA)
+	mock.click(fieldB)                         -- B takes over, A must stop listening
+	mock.pressKey(Enum.KeyCode.X)
+	eq(a.Value, Enum.KeyCode.F, "A kept its key")
+	eq(b.Value, Enum.KeyCode.X, "B got the new key")
+	mock.pressKey(Enum.KeyCode.F)
+	eq(fired, 1)
+	W2:Destroy()
+	mock.flush()
+	mock.pressKey(Enum.KeyCode.F)
+	eq(fired, 1, "keybind of a destroyed window must not fire")
+end)
+
+test("Press animation returns a card to its resting size even when tapped twice", function()
+	local btn = Combat:CreateButton({ Name = "Double", Callback = function() end })
+	local base = btn.Card.Size
+	local interact = mock.find(btn.Card, function(x) return x.ClassName == "TextButton" and x ~= btn.Blocker end)
+	mock.click(interact) mock.click(interact)
+	for _ = 1, 30 do mock.flush() end
+	eq(btn.Card.Size, base, "card size restored")
+end)
+
 test("Group (Gen 2 layout container)", function()
 	local row = Combat:CreateGroup({ Direction = "row", Columns = 2 })
 	local a = row:CreateToggle({ Name = "Row A", Default = true })
