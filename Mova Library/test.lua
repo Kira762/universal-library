@@ -314,6 +314,12 @@ do
 	local ti = 1
 	T:CreateButton({ Name = "Cycle the window title", Callback = function() ti = ti % #titles + 1 Window:SetTitle(titles[ti]) end })
 	T:CreateButton({ Name = "Set the subtitle to the time", Callback = function() Window:SetSubtitle(os.date("%X")) end })
+	T:CreateDivider("Profile card (bottom of the sidebar)")
+	local profileRow = T:CreateRow({ Columns = 2 })
+	profileRow:CreateButton({ Name = "Subtitle → Premium", Callback = function() Window:SetProfile({ Subtitle = "Premium" }) log("profile subtitle set") end })
+	profileRow:CreateButton({ Name = "Subtitle → none", Callback = function() Window:SetProfile({ Subtitle = false }) log("profile subtitle cleared") end })
+	profileRow:CreateButton({ Name = "Rename → Guest", Callback = function() Window:SetProfile({ Name = "Guest", Image = "user" }) log("profile renamed") end })
+	profileRow:CreateButton({ Name = "Show / hide card", Callback = function() Window:SetProfileVisible(not Window:IsProfileVisible()) log("profile visible =", Window:IsProfileVisible()) end })
 	T:CreateKeybind({ Name = "Window toggle key", Description = "Rebinding here changes the key that shows / hides the window.", Default = "RightShift", Mode = "Press", Save = false, ChangedCallback = function(key) Window:SetToggleKey(key) log("toggle key =", key) end })
 
 	T:CreateDivider("Themes")

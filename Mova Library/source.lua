@@ -3818,41 +3818,82 @@ function Mova:CreateWindow(props)
 	local sidebar = New("Frame", { Name = "Sidebar", BackgroundTransparency = 1, Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = sidebar })
 	self.Sidebar = sidebar
-	local CHIP_H = 44
-	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -CHIP_H), Parent = sidebar })
+	-- profile footer (Gen 2: 60px footer, 34px avatar, no divider). Ours is a 40px card inset in the
+	-- rail: avatar plate + display name over @username, hover wash, and it doubles as the Settings
+	-- shortcut (lit like a selected tab while Settings is open). Profile = false hides it and the
+	-- tab list takes the height back; Window:SetProfile{ Name, Subtitle, Image } changes the lines.
+	local PROFILE_H = 56
+	local profileProps = prop(props, nil, "Profile", "profile", "User", "user")
+	local showProfile = prop(props, true, "ShowProfile", "showProfile")
+	if profileProps == false then showProfile = false end
+	if typeof(profileProps) ~= "table" then profileProps = {} end
+	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, showProfile and -PROFILE_H or 0), Parent = sidebar })
 	Padding(tabList, 8, 8, 8, 8)
 	List(tabList, 2)
 	self.TabList = tabList
 
-	-- player chip at the bottom of the sidebar
-	-- player chip: real avatar headshot (rbxthumb of the local player, nothing fetched from the marketplace),
-	-- display name on top, @username underneath. Falls back to an initial when there is no player.
-	-- Kept compact (44px, 24px avatar): the sidebar is navigation first, identity second.
-	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CHIP_H), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
-	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -16, 0, 1), Position = UDim2.fromOffset(8, 0), Parent = chip })
 	local displayName = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
 	local userName = (LocalPlayer and LocalPlayer.Name) or "guest"
 	local userId = LocalPlayer and tonumber(LocalPlayer.UserId) or 0
-	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Parent = chip })
-	Corner(12, avatar)
-	Stroke(avatar)
-	New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 11, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
-	if userId > 0 then
-		local head = New("ImageLabel", {
-			Image = "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48", BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar,
-		})
-		Corner(12, head)
+	local footer = New("Frame", { Name = "Profile", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, PROFILE_H), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Visible = showProfile, Parent = sidebar })
+	local card = New("TextButton", {
+		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 0.6, Size = UDim2.new(1, -16, 0, 40), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8),
+		AutoButtonColor = false, Parent = footer,
+	})
+	Corner(nil, card)
+	local cardStroke = Stroke(card)
+	cardStroke.Transparency = 1
+	local cardHover = hoverOverlay(card)
+	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(28, 28), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Parent = card })
+	Corner(14, avatar)
+	Stroke(avatar, "Stroke", 1, 0.8)
+	local initial = New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	local head = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar })
+	Corner(14, head)
+	local function setAvatar(image)
+		local spec = image and resolveIcon(image) or nil
+		if spec then applyIcon(head, spec) head.Visible = true else head.Image = "" head.Visible = false end
 	end
+	setAvatar(profileProps.Image or profileProps.Avatar or (userId > 0 and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48") or nil))
+	local textRight = 22 -- room for the settings mark
 	local chipLabel = New("TextLabel", {
-		Text = displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		Size = UDim2.new(1, -54, 0, 14), Position = UDim2.fromOffset(44, 9), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		Text = profileProps.Name or displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
+		Size = UDim2.new(1, -42 - textRight, 0, 14), Position = UDim2.fromOffset(42, 7), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 	})
 	local chipSub = New("TextLabel", {
-		Text = "@" .. userName, TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -54, 0, 12), Position = UDim2.fromOffset(44, 23),
-		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		Text = profileProps.Subtitle or ("@" .. userName), TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -42 - textRight, 0, 12), Position = UDim2.fromOffset(42, 21),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 	})
-	self.ChipLabel, self.ChipSub = chipLabel, chipSub
+	-- settings mark: the card is the way to Settings from the rail, so it shows a chevron that
+	-- brightens on hover and turns into the lit state while Settings is open
+	local mark = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Parent = card })
+	local markGlyph = Glyph("chevron-right", mark, "TextDim", 12, 1.5)
+	self.Profile, self.ProfileCard, self.ChipLabel, self.ChipSub, self.ProfileAvatar = footer, card, chipLabel, chipSub, head
+	self._profileShown = showProfile
+	local profileHover = false
+	local function styleProfile(instant)
+		local active = self.SettingsTab ~= nil and self.CurrentTab == self.SettingsTab
+		local t = instant and 0 or Motion.base
+		tween(card, { BackgroundTransparency = active and 0 or (profileHover and 0.3 or 0.6) }, t)
+		tween(cardStroke, { Transparency = active and (CurrentTheme.StrokeTransparency or 0.45) or 1 }, t)
+		tween(cardHover, { BackgroundTransparency = 1 }, t)
+		local glyphKey = (active or profileHover) and "Text" or "TextDim"
+		tintGlyph(markGlyph, themeValue(glyphKey), t)
+		rebindGlyph(markGlyph, glyphKey)
+		mark.Visible = self.SettingsTab ~= nil
+	end
+	self._styleProfile = styleProfile
+	connect(card.MouseEnter, function() profileHover = true styleProfile() end)
+	connect(card.MouseLeave, function() profileHover = false styleProfile() end)
+	connect(card.MouseButton1Click, function()
+		if self.SettingsTab then
+			self:SelectTab(self.SettingsTab)
+		else
+			pcall(setclipboard, userName)
+			self:Toast(translate("Username copied."))
+		end
+	end)
+	task.defer(function() if not self.Destroyed then styleProfile(true) end end)
 
 	-- content
 	local content = New("Frame", { Name = "Content", BackgroundColor3 = "Background", Size = UDim2.new(1, -sidebarWidth, 1, 0), Position = UDim2.fromOffset(sidebarWidth, 0), ClipsDescendants = true, Parent = body })
@@ -4245,6 +4286,7 @@ function Window:SelectTab(target)
 	local previous = self.CurrentTab
 	if previous == target then return end
 	self.CurrentTab = target
+	if self._styleProfile then self._styleProfile() end
 	self._tabToken = (self._tabToken or 0) + 1
 	local token = self._tabToken
 	local downwards = true
@@ -4479,6 +4521,35 @@ Window.ToggleMinimize = Window.ToggleMinimise
 Window.Minimize = Window.ToggleMinimise
 
 function Window:SetTitle(text) self.Name = text bindText(self.TitleLabel, tostring(text)) return self end
+
+-- Profile card: SetProfile{ Name = , Subtitle = , Image = } changes any of the lines (nil keeps,
+-- false clears the subtitle line); SetProfileVisible(false) removes the card and gives the tab
+-- list its height back.
+function Window:SetProfile(info)
+	info = info or {}
+	if info.Name ~= nil then bindText(self.ChipLabel, tostring(info.Name)) end
+	if info.Subtitle ~= nil then
+		local text = info.Subtitle ~= false and tostring(info.Subtitle) or ""
+		bindText(self.ChipSub, text)
+		self.ChipSub.Visible = text ~= ""
+		self.ChipLabel.Position = text ~= "" and UDim2.fromOffset(42, 7) or UDim2.fromOffset(42, 13)
+	end
+	if info.Image ~= nil then
+		local spec = info.Image and resolveIcon(info.Image) or nil
+		if spec then applyIcon(self.ProfileAvatar, spec) self.ProfileAvatar.Visible = true else self.ProfileAvatar.Image = "" self.ProfileAvatar.Visible = false end
+	end
+	return self
+end
+
+function Window:SetProfileVisible(state)
+	state = state and true or false
+	if state == self._profileShown then return self end
+	self._profileShown = state
+	self.Profile.Visible = state
+	self.TabList.Size = UDim2.new(1, 0, 1, state and -self.Profile.Size.Y.Offset or 0)
+	return self
+end
+function Window:IsProfileVisible() return self._profileShown end
 function Window:SetSubtitle(text) if self.SubtitleLabel then bindText(self.SubtitleLabel, tostring(text)) end return self end
 
 function Window:SetToggleKey(key)
@@ -4629,6 +4700,7 @@ function Window:_createSettingsTab()
 	local tab = self:CreateTab({ Name = "Settings", _internal = true, Order = 10000 })
 	tab._isSettings = true
 	self.SettingsTab = tab
+	if self._styleProfile then self._styleProfile(true) end
 
 	local appearance = tab:CreateSection({ Name = "Appearance" })
 	local names = Mova:GetThemeNames()
