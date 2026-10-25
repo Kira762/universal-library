@@ -252,7 +252,7 @@ local function resolveIcon(icon)
 	if typeof(icon) == "number" then
 		out = "rbxassetid://" .. tostring(icon)
 	elseif typeof(icon) == "string" then
-		if icon:match("^rbxasset") or icon:match("^http") then
+		if icon:match("^rbx%a+://") or icon:match("^http") then
 			out = icon
 		elseif icon:match("^%d+$") then
 			out = "rbxassetid://" .. icon
@@ -262,8 +262,8 @@ local function resolveIcon(icon)
 		end
 	end
 	if out and SecureMode then
-		-- only per-machine custom assets are allowed in secure mode
-		if not out:match("^rbxasset://") then
+		-- only per-machine custom assets and player thumbnails are allowed in secure mode
+		if not (out:match("^rbxasset://") or out:match("^rbxthumb://")) then
 			return nil
 		end
 	end
@@ -280,20 +280,20 @@ Mova.Themes.Dark = {
 	Name = "Dark",
 	Background = C(26, 26, 31),
 	Sidebar = C(20, 20, 24),
-	Surface = C(36, 36, 43),
-	SurfaceHover = C(45, 45, 53),
-	Stroke = C(62, 62, 72),
+	Surface = C(44, 44, 52),
+	SurfaceHover = C(54, 54, 63),
+	Stroke = C(70, 70, 82),
 	Accent = C(99, 125, 255),
 	AccentHover = C(122, 144, 255),
 	OnAccent = C(255, 255, 255),
 	Text = C(240, 240, 245),
 	TextDim = C(160, 162, 176),
 	Placeholder = C(120, 122, 136),
-	Divider = C(44, 44, 52),
+	Divider = C(48, 48, 56),
 	Shadow = C(0, 0, 0),
 	Knob = C(228, 228, 235),
-	Track = C(56, 56, 66),
-	Field = C(48, 48, 57),
+	Track = C(64, 64, 75),
+	Field = C(56, 56, 66),
 	Scrollbar = C(92, 92, 104),
 	Overlay = C(0, 0, 0),
 	Success = C(72, 199, 142),
@@ -338,88 +338,88 @@ Mova.Themes.Midnight = derive(Mova.Themes.Dark, {
 	Name = "Midnight",
 	Background = C(19, 23, 35),
 	Sidebar = C(14, 17, 27),
-	Surface = C(28, 34, 51),
-	SurfaceHover = C(36, 43, 64),
-	Stroke = C(52, 62, 90),
-	Divider = C(36, 43, 62),
+	Surface = C(35, 42, 62),
+	SurfaceHover = C(44, 52, 76),
+	Stroke = C(60, 71, 102),
+	Divider = C(40, 48, 68),
 	Accent = C(84, 160, 255),
 	AccentHover = C(110, 178, 255),
-	Field = C(39, 47, 70),
-	Track = C(48, 57, 82),
+	Field = C(47, 56, 82),
+	Track = C(56, 66, 94),
 })
 
 Mova.Themes.Ocean = derive(Mova.Themes.Dark, {
 	Name = "Ocean",
 	Background = C(19, 36, 43),
 	Sidebar = C(14, 28, 34),
-	Surface = C(27, 50, 59),
-	SurfaceHover = C(34, 62, 72),
-	Stroke = C(48, 84, 96),
-	Divider = C(34, 62, 72),
+	Surface = C(33, 60, 70),
+	SurfaceHover = C(41, 72, 84),
+	Stroke = C(56, 94, 108),
+	Divider = C(38, 68, 80),
 	Accent = C(0, 190, 170),
 	AccentHover = C(30, 210, 190),
 	OnAccent = C(5, 25, 25),
-	Field = C(36, 66, 77),
-	Track = C(44, 78, 90),
+	Field = C(44, 76, 88),
+	Track = C(52, 88, 102),
 })
 
 Mova.Themes.Ember = derive(Mova.Themes.Dark, {
 	Name = "Ember",
 	Background = C(34, 24, 22),
 	Sidebar = C(27, 19, 17),
-	Surface = C(46, 33, 30),
-	SurfaceHover = C(57, 41, 37),
-	Stroke = C(76, 56, 50),
-	Divider = C(56, 41, 37),
+	Surface = C(55, 40, 36),
+	SurfaceHover = C(66, 48, 44),
+	Stroke = C(86, 64, 58),
+	Divider = C(62, 46, 42),
 	Accent = C(255, 112, 67),
 	AccentHover = C(255, 136, 96),
-	Field = C(60, 44, 40),
-	Track = C(70, 52, 46),
+	Field = C(70, 52, 47),
+	Track = C(80, 60, 54),
 })
 
 Mova.Themes.Amethyst = derive(Mova.Themes.Dark, {
 	Name = "Amethyst",
 	Background = C(28, 22, 40),
 	Sidebar = C(22, 17, 31),
-	Surface = C(39, 31, 55),
-	SurfaceHover = C(49, 39, 69),
-	Stroke = C(68, 55, 94),
-	Divider = C(49, 39, 66),
+	Surface = C(47, 38, 66),
+	SurfaceHover = C(57, 46, 80),
+	Stroke = C(76, 62, 104),
+	Divider = C(54, 44, 74),
 	Accent = C(170, 110, 255),
 	AccentHover = C(188, 138, 255),
-	Field = C(52, 42, 73),
-	Track = C(64, 52, 88),
+	Field = C(60, 50, 84),
+	Track = C(72, 58, 98),
 })
 
 Mova.Themes.Rose = derive(Mova.Themes.Dark, {
 	Name = "Rose",
 	Background = C(36, 23, 29),
 	Sidebar = C(29, 18, 23),
-	Surface = C(49, 32, 40),
-	SurfaceHover = C(61, 40, 50),
-	Stroke = C(82, 56, 68),
-	Divider = C(60, 40, 50),
+	Surface = C(58, 39, 48),
+	SurfaceHover = C(70, 47, 58),
+	Stroke = C(92, 64, 78),
+	Divider = C(66, 46, 56),
 	Accent = C(255, 92, 140),
 	AccentHover = C(255, 120, 160),
-	Field = C(64, 43, 53),
-	Track = C(76, 52, 64),
+	Field = C(74, 50, 62),
+	Track = C(86, 60, 72),
 })
 
 Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 	Name = "Mocha",
 	Background = C(36, 36, 55),
 	Sidebar = C(30, 30, 46),
-	Surface = C(49, 50, 72),
-	SurfaceHover = C(59, 60, 86),
-	Stroke = C(76, 78, 108),
-	Divider = C(58, 60, 84),
+	Surface = C(57, 58, 82),
+	SurfaceHover = C(67, 68, 96),
+	Stroke = C(86, 88, 118),
+	Divider = C(64, 66, 92),
 	Accent = C(203, 166, 247),
 	AccentHover = C(216, 185, 252),
 	OnAccent = C(30, 30, 46),
 	Text = C(205, 214, 244),
 	TextDim = C(166, 173, 200),
-	Field = C(62, 64, 90),
-	Track = C(72, 74, 100),
+	Field = C(70, 72, 100),
+	Track = C(80, 82, 110),
 })
 
 local ThemeOrder = { "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", "Rose", "Mocha" }
@@ -876,6 +876,7 @@ local function hoverOverlay(parent)
 end
 
 local function hoverFx(trigger, overlay, stroke, opts)
+	if IsMobile then return end
 	opts = opts or {}
 	local strength = opts.strength or 0.95
 	connect(trigger.MouseEnter, function()
@@ -1160,11 +1161,10 @@ local function makeDraggable(frame, handle, options)
 			local ap = frame.AbsolutePosition
 			local size = frame.AbsoluteSize
 			local anchor = frame.AnchorPoint
-			local inset = 0
-			if GuiService and Root and not Root.IgnoreGuiInset then
-				local ok, v = pcall(function() return GuiService:GetGuiInset() end)
-				if ok and v then inset = v.Y end
-			end
+			-- AbsolutePosition is measured below Roblox's top bar even when the ScreenGui ignores the
+			-- inset, while Position offsets start at the real top of the screen: add the inset back or
+			-- the frame jumps up by one top-bar height on the first move (verified by Gen 2 in play).
+			local inset = topInset()
 			startFrame = UDim2.fromOffset(ap.X + size.X * anchor.X, ap.Y + inset + size.Y * anchor.Y)
 			frame.Position = startFrame
 			conns[#conns + 1] = connect(input.Changed, function()
@@ -1659,7 +1659,7 @@ local function buildCard(container, props, kind, controlWidth)
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 0),
-		Size = UDim2.fromOffset(controlWidth or 0, 44),
+		Size = UDim2.new(0, controlWidth or 0, 1, 0),
 		ZIndex = 2,
 		Parent = card,
 	})
@@ -1723,7 +1723,7 @@ function Container:CreateButton(props, callback)
 	if typeof(props) == "string" then props = { Name = props, Callback = callback } end
 	local el = buildCard(self, props, "Button", 24)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
-	local arrowHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = el.Control })
+	local arrowHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0, 20, 1, 0), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = el.Control })
 	local arrow = Glyph("chevron-right", arrowHolder, "TextDim", 14, 1.6)
 	connect(interact.MouseEnter, function()
 		if el.Locked then return end
@@ -1758,7 +1758,7 @@ function Container:CreateToggle(props)
 	-- pill that is translucent when off and becomes the accent (with a lighter accent rim) when on.
 	local track = New("Frame", {
 		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(46, 22), AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
+		Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(11, track)
 	local trackStroke = Stroke(track, "Stroke", 1, 0.5)
@@ -1993,7 +1993,7 @@ function Container:CreateInput(props)
 	local maxLength = prop(props, nil, "MaxLength", "maxLength")
 
 	local field = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
+		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
 	local stroke = Stroke(field)
@@ -2076,7 +2076,7 @@ function Container:CreateDropdown(props)
 
 	local field = New("TextButton", {
 		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
 	local stroke = Stroke(field)
@@ -2305,7 +2305,7 @@ function Container:_createKeybind(props, attachedToggle)
 
 	local field = New("TextButton", {
 		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
 	local stroke = Stroke(field)
@@ -2427,7 +2427,7 @@ function Container:CreateColorPicker(props)
 	if useAlpha then el.Alpha = clamp(el.Alpha, 0, 1) end
 
 	local swatchHolder = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.fromOffset(52, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
+		BackgroundColor3 = "Field", Size = UDim2.fromOffset(52, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, swatchHolder)
 	local swatchStroke = Stroke(swatchHolder)
@@ -3195,6 +3195,7 @@ function Mova:CreateWindow(props)
 
 	-- keep inside the viewport when it changes (rotation, resize)
 	connect(root:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if self.Minimised or self.Destroyed then return end
 		local v = viewportSize()
 		local w = math.min(self.Size.X, v.X - 24)
 		local h = math.min(self.Size.Y, v.Y - 24)
@@ -3385,9 +3386,10 @@ function Window:SelectTab(target)
 	setFont(target.Label, "SemiBold")
 	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Accent") }, Motion.base) end
 	ThemeRegistry[target.Label] = { TextColor3 = "Text", FontFace = "@SemiBold" }
-	-- selected pill nudges right a touch so the change is felt, not just seen
-	target.Button.Position = UDim2.fromOffset(-4, 0)
-	tween(target.Button, { Position = UDim2.fromOffset(0, 0) }, 0.35, Motion.Expo, Motion.Out)
+	-- the label nudges right a touch so the change is felt, not just seen (the list layout owns the button's Position)
+	local lx = target.Label.Position.X.Offset
+	target.Label.Position = UDim2.fromOffset(lx - 4, 0)
+	tween(target.Label, { Position = UDim2.fromOffset(lx, 0) }, 0.35, Motion.Expo, Motion.Out)
 	-- content: previous page slides away and fades, new one slides in (Fluent-style)
 	local offset = downwards and 18 or -18
 	if previous then
@@ -3526,11 +3528,13 @@ function Window:ToggleMinimise()
 	local token = self._minToken
 	closePopup()
 	if self.Minimised then
+		self.ResizeHandle.Visible = false
 		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Topbar.Size.Y.Offset) }, 0.35, Motion.Expo, Motion.InOut)
 		task.delay(0.35, function() if token == self._minToken and self.Minimised then self.Body.Visible = false end end)
 	else
 		self.Body.Visible = true
 		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, 0.35, Motion.Expo, Motion.InOut)
+		task.delay(0.35, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = true end end)
 	end
 end
 Window.ToggleMinimize = Window.ToggleMinimise
