@@ -313,6 +313,34 @@ local function derive(base, overrides)
 	return t
 end
 
+-- Default. Monochrome in the Obsidian / Linoria spirit: near-black panels, a single off-white accent,
+-- hairline white outlines at ~10% so every edge is drawn but nothing shouts.
+Mova.Themes.Mono = derive(Mova.Themes.Dark, {
+	Name = "Mono",
+	Background = C(20, 20, 23),
+	Sidebar = C(14, 14, 16),
+	Surface = C(31, 31, 35),
+	SurfaceHover = C(41, 41, 46),
+	Stroke = C(255, 255, 255),
+	StrokeTransparency = 0.9,
+	Divider = C(37, 37, 41),
+	Accent = C(228, 228, 232),
+	AccentHover = C(255, 255, 255),
+	OnAccent = C(18, 18, 20),
+	Text = C(238, 238, 240),
+	TextDim = C(142, 142, 150),
+	Placeholder = C(104, 104, 112),
+	Knob = C(236, 236, 240),
+	Track = C(48, 48, 54),
+	Field = C(38, 38, 43),
+	Scrollbar = C(84, 84, 92),
+	Success = C(128, 204, 164),
+	Warning = C(232, 190, 110),
+	Error = C(232, 110, 110),
+	Radius = 12,
+	WindowRadius = 18,
+})
+
 Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	Name = "Light",
 	Background = C(244, 244, 247),
@@ -422,9 +450,9 @@ Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 	Track = C(80, 82, 110),
 })
 
-local ThemeOrder = { "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", "Rose", "Mocha" }
+local ThemeOrder = { "Mono", "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", "Rose", "Mocha" }
 
-local CurrentTheme = shallowCopy(Mova.Themes.Dark)
+local CurrentTheme = shallowCopy(Mova.Themes.Mono)
 local ThemeRegistry = setmetatable({}, { __mode = "k" })
 local ThemeHooks = setmetatable({}, { __mode = "k" }) -- instance -> function() run after a theme change
 
@@ -887,7 +915,7 @@ local function hoverFx(trigger, overlay, stroke, opts)
 	connect(trigger.MouseEnter, function()
 		if opts.enabled and not opts.enabled() then return end
 		if overlay then tween(overlay, { BackgroundTransparency = strength }, Motion.base) end
-		if stroke then tween(stroke, { Transparency = math.max(0, (CurrentTheme.StrokeTransparency or 0.45) - 0.3) }, Motion.base) end
+		if stroke then tween(stroke, { Transparency = math.max(0, (CurrentTheme.StrokeTransparency or 0.45) - 0.2) }, Motion.base) end
 	end)
 	connect(trigger.MouseLeave, function()
 		if overlay then tween(overlay, { BackgroundTransparency = 1 }, Motion.slow) end
@@ -1766,7 +1794,7 @@ function Container:CreateToggle(props)
 		Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(11, track)
-	local trackStroke = Stroke(track, "Stroke", 1, 0.5)
+	local trackStroke = Stroke(track)
 	local knob = New("Frame", {
 		BackgroundColor3 = "Knob", BackgroundTransparency = 0.45, Size = UDim2.fromOffset(22, 15), AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
@@ -1906,7 +1934,7 @@ function Container:CreateSlider(props)
 		Position = UDim2.new(1, 0, 0.5, 0), ZIndex = 5, Parent = fill,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
-	local knobRing = Stroke(knob, "Text", 1, 1)
+	local knobRing = Stroke(knob, "Background", 1, 0.6)
 	local knobGlow = Shadow(knob, "Text", 10, 0.85)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 20, 1, 0), Position = UDim2.fromOffset(-10, 0), ZIndex = 10, Parent = trackHolder })
 
@@ -1929,7 +1957,8 @@ function Container:CreateSlider(props)
 		local held = state == "drag"
 		local size = held and HANDLE_HELD or HANDLE_REST
 		tween(knob, { Size = UDim2.fromOffset(size.X, size.Y), BackgroundTransparency = held and 0.7 or 0 }, 0.3, Motion.Expo, Motion.Out)
-		tween(knobRing, { Transparency = held and 0.6 or 1 }, 0.3, Motion.Expo, Motion.Out)
+		tween(knobRing, { Color = held and themeValue("Text") or themeValue("Background"), Transparency = 0.6 }, 0.3, Motion.Expo, Motion.Out)
+		ThemeRegistry[knobRing] = { Color = held and "Text" or "Background" }
 		tween(track, { BackgroundColor3 = state == "idle" and themeValue("Track") or brighten(themeValue("Track"), 0.08) }, 0.45, Motion.Expo, Motion.Out)
 		if knobGlow then tween(knobGlow, { Transparency = held and 0.7 or 0.85 }, 0.3, Motion.Expo, Motion.Out) end
 	end

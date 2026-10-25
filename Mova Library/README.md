@@ -80,7 +80,7 @@ While the repository is private, save `source.lua` as `mova.lua` in the executor
 - **Window**: title/subtitle/icon, sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable (mouse + touch), kept on screen.
 - **Elements**: Button, Toggle (+ attached keybind), Slider, Input (numeric / live / on-enter), Dropdown (single, multi, type-to-filter, `Refresh`), Keybind (4 modes), ColorPicker (HSV square, hue, optional alpha, hex + RGB boxes), Label (with icon), Paragraph, Divider, Progress, Section (collapsible) / Groupbox.
 - **Overlays**: Notifications (4 types, progress bar, action buttons), Dialogs (Primary/Neutral/Danger buttons), popups close on outside click and stay inside the viewport.
-- **Themes**: Dark, Light, Midnight, Ocean, Ember, Amethyst, Rose, Mocha; `Mova:RegisterTheme(name, table)`; partial tables fall back to Dark.
+- **Themes**: Mono (default, monochrome), Dark, Light, Midnight, Ocean, Ember, Amethyst, Rose, Mocha; `Mova:RegisterTheme(name, table)`; partial tables fall back to Dark.
 - **Configs**: `Window:SaveConfig / LoadConfig / ListConfigs / DeleteConfig / SetAutoload`, autosave, built-in Settings tab UI for all of it.
 - **Key system**: drawn in code, local keys + remote list + custom `Validate` callback, saved keys, "Get key" copies the link.
 - **Localisation**: `Mova:SetTranslations{ es = { ["Auto farm"] = "Granja automática" } }` + `Mova:SetLocale("es")` relabels live.
@@ -100,7 +100,7 @@ All option tables accept several aliases (Rayfield, Linoria/Obsidian and lower-c
 | `Name` / `Title` | string | `"Mova"` | Title in the top bar, pill text, config folder name |
 | `Subtitle` | string | — | |
 | `Icon` | number \| string | — | `rbxassetid` number, `"rbxassetid://…"`, or a name handled by `Mova:SetIconResolver` |
-| `Theme` | string \| table | `"Dark"` | Any built-in name, a registered name, or a partial theme table |
+| `Theme` | string \| table | `"Mono"` | Any built-in name, a registered name, or a partial theme table |
 | `ToggleUIKeybind` / `ToggleKey` | string \| KeyCode | `"K"` | Show/hide key on desktop |
 | `Size` | UDim2 \| Vector2 \| `{w, h}` | 640×440 (560×340 mobile) | Clamped to the viewport |
 | `ConfigurationSaving` | table | — | `{ Enabled, FolderName, FileName = "default", AutoSave = true, AutoLoad = true }` |
@@ -160,7 +160,7 @@ Mova:Dialog({ Title = "Delete?", Content = "This cannot be undone.",
 ### Themes
 
 ```lua
-Mova:GetThemeNames()                -- { "Dark", "Light", "Midnight", ... }
+Mova:GetThemeNames()                -- { "Mono", "Dark", "Light", "Midnight", ... }
 Mova:SetTheme("Ocean")              -- tweens every bound property
 Mova:RegisterTheme("Neon", { Accent = Color3.fromRGB(0, 255, 170) })  -- missing keys fall back to Dark
 Mova:SetTheme({ Background = Color3.fromRGB(9, 9, 9) })               -- inline partial theme

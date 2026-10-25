@@ -15,7 +15,10 @@ local BRANCH_URL = "https://raw.githubusercontent.com/Kira762/universal-library/
 local MAIN_URL   = "https://raw.githubusercontent.com/Kira762/universal-library/main/Mova%20Library/source.lua"
 local LOCAL_FILE = "mova.lua"
 
+-- raw.githubusercontent.com caches a URL for ~5 minutes; a changing query string skips that cache
+-- so you always get the latest push, never a stale copy.
 local function fetch(url)
+	url = url .. "?t=" .. tostring(os.time())
 	local ok, body = pcall(game.HttpGet, game, url)
 	if ok and type(body) == "string" and body:find("Mova", 1, true) and not body:find("404: Not Found", 1, true) then
 		return body
@@ -42,7 +45,7 @@ print("[Mova test] Mova " .. tostring(Mova.Version) .. " loaded")
 local Window = Mova:CreateWindow({
 	Name = "Mova Test",
 	Subtitle = "visual check",
-	Theme = "Midnight",
+	Theme = "Mono",
 	ToggleUIKeybind = "RightShift",
 	ConfigurationSaving = { Enabled = true, FolderName = "MovaTest" },
 })
@@ -82,7 +85,7 @@ Overlays:CreateButton({ Name = "Dialog", Callback = function()
 end })
 Overlays:CreateButton({ Name = "Hide window (pill appears)", Callback = function() Window:Hide() end })
 Overlays:CreateButton({ Name = "Minimise / restore", Callback = function() Window:ToggleMinimise() end })
-Overlays:CreateDropdown({ Name = "Theme", Options = Mova:GetThemeNames(), Default = "Midnight", Save = false, Callback = function(t) Mova:SetTheme(t) end })
+Overlays:CreateDropdown({ Name = "Theme", Options = Mova:GetThemeNames(), Default = "Mono", Save = false, Callback = function(t) Mova:SetTheme(t) end })
 Overlays:CreateButton({ Name = "Unload", Callback = function() Mova:Destroy() end })
 
 Mova:Notify({ Title = "Mova test ready", Content = "RightShift toggles the window. Settings tab has themes + configs.", Type = "Success", Duration = 5 })
