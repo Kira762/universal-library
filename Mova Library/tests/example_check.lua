@@ -18,10 +18,10 @@ local fn = assert(realLoad(src, "example"))
 fn()
 for _ = 1, 25 do mock.flush() end -- progress bar loop + autoload
 assert(MovaRef.Flags.AutoFarm == false and MovaRef.Flags.FOV == 90 and MovaRef.Flags.LegacyToggle == true, "flags populated")
-assert(mock.Files["MovaExample/default.mova.json"] == nil, "nothing changed yet, so nothing autosaved")
+assert(mock.Files["Mova/MovaExample/configs/default.json"] == nil, "nothing changed yet, so nothing autosaved")
 MovaRef.Options.AutoFarm:Set(true)
 mock.flush()
-assert(mock.Files["MovaExample/default.mova.json"], "autosave produced a config after a change")
+assert(mock.Files["Mova/MovaExample/configs/default.json"], "autosave produced a config after a change")
 function Players:GetPlayers() return { { Name = "Tester" }, { Name = "Other" }, { Name = "New" } } end
 Players.PlayerAdded:Fire()
 assert(#MovaRef.Options.Player.Options == 3, "dropdown refreshed on PlayerAdded")
@@ -32,8 +32,8 @@ local w = MovaRef.Windows[1]
 assert(w.Main.Size.X.Offset == 640 and w.Main.Size.Y.Offset == 440, "Vector2 Size honoured")
 assert(mock.find(w.Tabs[1].Button, function(x) return x.ClassName == "ImageLabel" and x.Image == "rbxassetid://1" end), "tab icon by Lucide name")
 w:Destroy()
-print(string.format("example ok: %d instances, config=%d bytes", mock.Created(), #mock.Files["MovaExample/default.mova.json"]))
-print(mock.Files["MovaExample/default.mova.json"]:sub(1, 300) .. " ...")
+print(string.format("example ok: %d instances, config=%d bytes", mock.Created(), #mock.Files["Mova/MovaExample/configs/default.json"]))
+print(mock.Files["Mova/MovaExample/configs/default.json"]:sub(1, 300) .. " ...")
 
 -- test.lua (the no-bundle quick script) must also build cleanly; HttpGet is stubbed to "404" so it
 -- falls through to readfile, which the mock serves from source.lua.

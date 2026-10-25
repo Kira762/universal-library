@@ -26,7 +26,7 @@
 ]]
 
 local Mova = {
-	Version = "1.0.0",
+	Version = "1.1.0",
 	Build = "mova-1",
 	Flags = {},      -- flag -> current value
 	Options = {},    -- flag -> element handle
@@ -134,11 +134,6 @@ do
 	FS.delfile = wrap(delfile, nil)
 	FS.listfiles = wrap(listfiles, {})
 	FS.getcustomasset = typeof(getcustomasset) == "function" and getcustomasset or nil
-	function FS.ensureFolder(path)
-		if not FS.available then return false end
-		if not FS.isfolder(path) then FS.makefolder(path) end
-		return FS.isfolder(path)
-	end
 end
 Mova.FileSystem = FS
 
@@ -260,13 +255,152 @@ end
 --   * { Image = ..., ImageRectSize = Vector2, ImageRectOffset = Vector2 }  spritesheet cells
 --   * whatever your Mova:SetIconResolver(fn) returns for a name
 -- Secure mode never hands an asset id to the engine. Like Rayfield Gen 2 the PNG is downloaded from
--- Roblox's own asset delivery once into Mova/icons/ and shown through getcustomasset; the label
+-- Roblox's own asset delivery once into <Mova.Folder>/icons/ and shown through getcustomasset; the label
 -- fills in when the download lands. getgenv().MOVA_NO_ICON_CACHE = true disables that too.
 ---------------------------------------------------------------------------------------------------
 
-local SETTINGS_FOLDER = "Mova"
-local ICON_CACHE_FOLDER = SETTINGS_FOLDER .. "/icons"
 local NoIconCache = readGlobal("MOVA_NO_ICON_CACHE") == true
+
+---------------------------------------------------------------------------------------------------
+-- Storage. Everything Mova ever writes lives under ONE root folder with a fixed layout:
+--
+--   Mova/
+--   ├─ icons/                     shared secure-mode asset cache (<id>.png)
+--   └─ <Script>/                  one folder per window (ConfigurationSaving.FolderName renames it)
+--      ├─ settings.json           theme, autoload config, saved key, dismissed prompts
+--      └─ configs/
+--         └─ <name>.json          saved configs ({ library, version, data })
+--
+-- getgenv().MOVA_FOLDER moves the root. The old scattered layout (<Folder>/<name>.mova.json,
+-- theme.txt, autoload.txt, Mova/keys/*.txt) is migrated the first time a window with that name
+-- is created.
+---------------------------------------------------------------------------------------------------
+
+Mova.Folder = type(readGlobal("MOVA_FOLDER")) == "string" and readGlobal("MOVA_FOLDER") or "Mova"
+
+local Storage = { _stores = {} }
+Mova.Storage = Storage
+
+local function safeName(name, fallback)
+	name = trim((tostring(name or "")):gsub("[^%w%s%-_%.]", ""):gsub("^%.+", ""))
+	if name == "" then name = fallback or "default" end
+	return name
+end
+Storage.safeName = safeName
+
+-- makefolder is not recursive on most executors: create every missing parent in turn
+function Storage.ensure(path)
+	if not FS.available then return false end
+	local sofar
+	for part in tostring(path):gmatch("[^/\\]+") do
+		sofar = sofar and (sofar .. "/" .. part) or part
+		if not FS.isfolder(sofar) then FS.makefolder(sofar) end
+	end
+	return FS.isfolder(path)
+end
+
+function Storage.readJSON(path)
+	if not FS.isfile(path) then return nil end
+	local raw = FS.readfile(path)
+	if type(raw) ~= "string" or raw == "" then return nil end
+	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
+	if ok and type(decoded) == "table" then return decoded end
+	return nil
+end
+
+function Storage.writeJSON(path, value)
+	local ok, json = pcall(function() return HttpService:JSONEncode(value) end)
+	if not ok then return false, json end
+	local folder = tostring(path):match("^(.*)[/\\][^/\\]+$")
+	if folder and not Storage.ensure(folder) then return false, "could not create " .. folder end
+	FS.writefile(path, json)
+	return true
+end
+
+function Storage.iconFolder() return Mova.Folder .. "/icons" end
+function Storage.scriptFolder(name)
+	name = tostring(name or ""):gsub("^" .. Mova.Folder:gsub("%p", "%%%0") .. "[/\\]", "")
+	return Mova.Folder .. "/" .. safeName(name, "Script")
+end
+
+-- One store per script folder: settings.json (small key/value file) + configs/<name>.json
+local ScriptStore = {}
+ScriptStore.__index = ScriptStore
+
+function Storage.forScript(name)
+	local folder = Storage.scriptFolder(name)
+	local store = Storage._stores[folder]
+	if store then return store end
+	store = setmetatable({
+		Folder = folder,
+		ConfigFolder = folder .. "/configs",
+		SettingsPath = folder .. "/settings.json",
+	}, ScriptStore)
+	Storage._stores[folder] = store
+	return store
+end
+
+function ScriptStore:Settings()
+	if not self._settings then self._settings = Storage.readJSON(self.SettingsPath) or {} end
+	return self._settings
+end
+function ScriptStore:Get(key) return self:Settings()[key] end
+function ScriptStore:Set(key, value)
+	local settings = self:Settings()
+	if settings[key] == value then return true end
+	settings[key] = value
+	return Storage.writeJSON(self.SettingsPath, settings)
+end
+
+function ScriptStore:ConfigPath(name) return self.ConfigFolder .. "/" .. safeName(name) .. ".json" end
+function ScriptStore:ListConfigs()
+	local out = {}
+	for _, file in ipairs(FS.listfiles(self.ConfigFolder) or {}) do
+		local name = tostring(file):match("([^/\\]+)%.json$")
+		if name then out[#out + 1] = name end
+	end
+	table.sort(out)
+	return out
+end
+function ScriptStore:HasConfig(name) return FS.isfile(self:ConfigPath(name)) end
+function ScriptStore:ReadConfig(name) return Storage.readJSON(self:ConfigPath(name)) end
+function ScriptStore:WriteConfig(name, value) return Storage.writeJSON(self:ConfigPath(name), value) end
+function ScriptStore:DeleteConfig(name)
+	local path = self:ConfigPath(name)
+	if FS.isfile(path) then FS.delfile(path) return true end
+	return false
+end
+
+-- Moves files from the pre-1.1 layout into this store (existing configs are never overwritten).
+function ScriptStore:Migrate(legacyFolders, legacyKeyPath)
+	if not FS.available then return end
+	for _, old in ipairs(legacyFolders or {}) do
+		if old ~= self.ConfigFolder then
+			for _, file in ipairs(FS.listfiles(old) or {}) do
+				local f = tostring(file)
+				local leaf = f:match("([^/\\]+)$") or ""
+				local cfgName = leaf:match("^(.+)%.mova%.json$")
+				if cfgName then
+					local raw = FS.readfile(f)
+					if raw and not self:HasConfig(cfgName) and Storage.ensure(self.ConfigFolder) then
+						FS.writefile(self:ConfigPath(cfgName), raw)
+					end
+					FS.delfile(f)
+				elseif leaf == "theme.txt" or leaf == "autoload.txt" then
+					local v = trim(FS.readfile(f) or "")
+					local key = leaf == "theme.txt" and "theme" or "autoload"
+					if v ~= "" and self:Get(key) == nil then self:Set(key, v) end
+					FS.delfile(f)
+				end
+			end
+		end
+	end
+	if legacyKeyPath and FS.isfile(legacyKeyPath) then
+		local v = trim(FS.readfile(legacyKeyPath) or "")
+		if v ~= "" and self:Get("key") == nil then self:Set("key", v) end
+		FS.delfile(legacyKeyPath)
+	end
+end
 
 local IconResolver = nil
 function Mova:SetIconResolver(fn)
@@ -359,7 +493,7 @@ local function cachedAsset(id)
 	local uri = IconCache.uris[id]
 	if uri then return iconSpec(uri) end
 	if NoIconCache or not FS.available or not FS.getcustomasset or IconCache.failed[id] then return nil end
-	local path = ICON_CACHE_FOLDER .. "/" .. tostring(id) .. ".png"
+	local path = Storage.iconFolder() .. "/" .. tostring(id) .. ".png"
 	if FS.isfile(path) then
 		uri = customAsset(path)
 		if uri then
@@ -378,7 +512,7 @@ local function cachedAsset(id)
 			end
 			local out
 			-- only ever write a real PNG: an error page cached to disk would shadow the asset forever
-			if body and FS.ensureFolder(SETTINGS_FOLDER) and FS.ensureFolder(ICON_CACHE_FOLDER) then
+			if body and Storage.ensure(Storage.iconFolder()) then
 				FS.writefile(path, body)
 				out = customAsset(path)
 			end
@@ -3522,14 +3656,20 @@ function Mova:CreateWindow(props)
 
 	-- configuration
 	local cfg = prop(props, nil, "ConfigurationSaving", "Configuration", "configuration", "Config")
+	local folderName = typeof(cfg) == "table" and prop(cfg, nil, "FolderName", "Folder", "folder", "customFolder") or nil
+	self.Store = Storage.forScript(folderName or self.Name)   -- <Mova.Folder>/<Script>/ (settings.json + configs/)
+	self.Folder = self.Store.Folder
+	self.ConfigFolder = self.Store.ConfigFolder
+	self._legacyFolders = { Mova.Folder .. "/" .. self.Name:gsub("[^%w%s%-_]", ""), self.Folder }
+	if folderName then self._legacyFolders[#self._legacyFolders + 1] = tostring(folderName) end
 	if typeof(cfg) == "table" then
 		self.ConfigEnabled = prop(cfg, true, "Enabled", "enabled")
-		self.ConfigFolder = prop(cfg, nil, "FolderName", "Folder", "folder", "customFolder") or (SETTINGS_FOLDER .. "/" .. self.Name:gsub("[^%w%s%-_]", ""))
-		self.ConfigFile = prop(cfg, "default", "FileName", "fileName", "file")
+		self.ConfigFile = safeName(prop(cfg, "default", "FileName", "fileName", "file"))
 		self._autoSave = prop(cfg, true, "AutoSave", "autoSave")
 		self._autoLoad = prop(cfg, true, "AutoLoad", "autoLoad")
 	else
 		self.ConfigEnabled = false
+		self.ConfigFile = "default"
 	end
 	if self.ConfigEnabled and not FS.available then
 		self.ConfigEnabled = false
@@ -3970,8 +4110,9 @@ function Window:_finishSetup(props)
 	task.defer(function()
 		if self.Destroyed then return end
 		if self.ConfigEnabled then
-			local saved = FS.isfile(self.ConfigFolder .. "/theme.txt") and trim(FS.readfile(self.ConfigFolder .. "/theme.txt") or "") or ""
-			if saved ~= "" and Mova.Themes[saved] then Mova:SetTheme(saved, false) end
+			self.Store:Migrate(self._legacyFolders)
+			local saved = self.Store:Get("theme")
+			if type(saved) == "string" and Mova.Themes[saved] then Mova:SetTheme(saved, false) end
 		end
 		if self._buildSettings then self:_createSettingsTab() end
 		if self.ConfigEnabled and self._autoLoad then
@@ -3979,14 +4120,14 @@ function Window:_finishSetup(props)
 			if auto then self:LoadConfig(auto) end
 		end
 		if self._discordInvite and typeof(setclipboard) == "function" then
-			local remembered = FS.isfile(SETTINGS_FOLDER .. "/discord_" .. tostring(self._discordInvite))
+			local remembered = self.Store:Get("discordPrompted") == tostring(self._discordInvite)
+				or FS.isfile(Mova.Folder .. "/discord_" .. tostring(self._discordInvite))
 			if not remembered then
 				Mova:Notify({
 					Title = "Join the Discord", Content = "The developer of " .. tostring(self.Name) .. " has a Discord server.", Duration = 10,
 					Actions = { { Text = "Copy invite", Callback = function()
 						pcall(setclipboard, "https://discord.gg/" .. tostring(self._discordInvite))
-						FS.ensureFolder(SETTINGS_FOLDER)
-						FS.writefile(SETTINGS_FOLDER .. "/discord_" .. tostring(self._discordInvite), "1")
+						self.Store:Set("discordPrompted", tostring(self._discordInvite))
 					end }, { Text = "Dismiss" } },
 				})
 			end
@@ -4340,15 +4481,8 @@ Window.Unload = Window.Destroy
 
 -- Configs -----------------------------------------------------------------------------------------
 
-local function sanitiseFileName(name)
-	name = tostring(name or "default"):gsub("[^%w%s%-_%.]", "")
-	name = trim(name)
-	if name == "" then name = "default" end
-	return name
-end
-
 function Window:_configPath(name)
-	return self.ConfigFolder .. "/" .. sanitiseFileName(name or self.ConfigFile) .. ".mova.json"
+	return self.Store:ConfigPath(name or self.ConfigFile)
 end
 
 function Window:_collect()
@@ -4369,12 +4503,9 @@ end
 
 function Window:SaveConfig(name)
 	if not self.ConfigEnabled then return false, "configuration saving is disabled" end
-	if not FS.ensureFolder(SETTINGS_FOLDER) or not FS.ensureFolder(self.ConfigFolder) then
-		return false, "could not create config folder"
-	end
-	local ok, json = pcall(function() return HttpService:JSONEncode({ version = 1, library = "Mova", data = self:_collect() }) end)
-	if not ok then return false, json end
-	FS.writefile(self:_configPath(name), json)
+	name = safeName(name or self.ConfigFile)
+	local ok, err = self.Store:WriteConfig(name, { version = 1, library = "Mova", data = self:_collect() })
+	if not ok then return false, err end
 	log("saved config", name)
 	return true
 end
@@ -4382,11 +4513,10 @@ Window.Save = Window.SaveConfig
 
 function Window:LoadConfig(name, silent)
 	if not self.ConfigEnabled then return false, "configuration saving is disabled" end
-	local path = self:_configPath(name)
-	if not FS.isfile(path) then return false, "no such config" end
-	local raw = FS.readfile(path)
-	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
-	if not ok or typeof(decoded) ~= "table" then return false, "config file is corrupt" end
+	name = safeName(name or self.ConfigFile)
+	if not self.Store:HasConfig(name) then return false, "no such config" end
+	local decoded = self.Store:ReadConfig(name)
+	if not decoded then return false, "config file is corrupt" end
 	local data = decoded.data or decoded
 	local previousAuto = self._autoSave
 	self._autoSave = false   -- don't re-save while applying
@@ -4409,36 +4539,28 @@ end
 Window.Load = Window.LoadConfig
 
 function Window:ListConfigs()
-	local out = {}
-	if not self.ConfigEnabled then return out end
-	for _, file in ipairs(FS.listfiles(self.ConfigFolder) or {}) do
-		local name = tostring(file):match("([^/\\]+)%.mova%.json$")
-		if name then out[#out + 1] = name end
-	end
-	table.sort(out)
-	return out
+	if not self.ConfigEnabled then return {} end
+	return self.Store:ListConfigs()
 end
 
 function Window:DeleteConfig(name)
 	if not self.ConfigEnabled then return false end
-	local path = self:_configPath(name)
-	if FS.isfile(path) then FS.delfile(path) return true end
+	if self.Store:DeleteConfig(name) then
+		if self._activeConfig == safeName(name) then self._activeConfig = nil end
+		return true
+	end
 	return false
 end
 
-function Window:_autoloadPath() return self.ConfigFolder .. "/autoload.txt" end
 function Window:_readAutoload()
-	local p = self:_autoloadPath()
-	if FS.isfile(p) then
-		local v = trim(FS.readfile(p) or "")
-		if v ~= "" then return v end
-	end
+	local v = self.Store:Get("autoload")
+	if type(v) == "string" and v ~= "" then return v end
 	return nil
 end
+Window.GetAutoload = Window._readAutoload
 function Window:SetAutoload(name)
 	if not self.ConfigEnabled then return false end
-	FS.ensureFolder(self.ConfigFolder)
-	if name then FS.writefile(self:_autoloadPath(), tostring(name)) else FS.delfile(self:_autoloadPath()) end
+	self.Store:Set("autoload", name and safeName(name) or nil)
 	return true
 end
 
@@ -4466,9 +4588,7 @@ function Window:_createSettingsTab()
 		Callback = function(v)
 			if not v then return end
 			Mova:SetTheme(v)
-			if self.ConfigEnabled and FS.ensureFolder(SETTINGS_FOLDER) and FS.ensureFolder(self.ConfigFolder) then
-				FS.writefile(self.ConfigFolder .. "/theme.txt", tostring(v))
-			end
+			if self.ConfigEnabled then self.Store:Set("theme", tostring(v)) end
 		end,
 	})
 	if not IsMobile then
@@ -4483,31 +4603,48 @@ function Window:_createSettingsTab()
 
 	if self.ConfigEnabled then
 		local configs = tab:CreateSection({ Name = "Configuration" })
-		local nameInput = configs:CreateInput({ Name = "Config name", Placeholder = self.ConfigFile, Save = false, Default = "" })
-		local list = configs:CreateDropdown({ Name = "Saved configs", Options = self:ListConfigs(), Save = false, Placeholder = "Select a config" })
-		local function refresh()
-			list:Refresh(self:ListConfigs(), true)
+		local list, autoloadToggle
+		local function syncAutoload()
+			if autoloadToggle then autoloadToggle:Set(list.Value ~= nil and self:_readAutoload() == list.Value, true) end
 		end
-		configs:CreateButton({ Name = "Save", Description = "Saves the current values under the name above (or the selected config).", Callback = function()
-			local name = trim(nameInput.Value)
-			if name == "" then name = list.Value or self.ConfigFile end
-			local ok, err = self:SaveConfig(name)
-			self._activeConfig = name
-			refresh()
-			list:Set(name, true)
-			Mova:Notify({ Title = ok and "Saved" or "Save failed", Content = ok and ("Config '" .. name .. "' saved.") or tostring(err), Type = ok and "Success" or "Error", Duration = 3 })
-		end })
-		configs:CreateButton({ Name = "Load", Callback = function()
+		local function refresh(select)
+			local names = self:ListConfigs()
+			list:Refresh(names, true)
+			if select then list:Set(select, true) end
+			local auto = self:_readAutoload()
+			list:SetDescription(#names == 0 and "Nothing saved yet — type a name below and press Enter."
+				or ("Active: " .. (self._activeConfig or self.ConfigFile) .. (auto and ("  ·  Autoload: " .. auto) or "")))
+			syncAutoload()
+		end
+		local function report(ok, title, content, err)
+			Mova:Notify({ Title = ok and title or (title .. " failed"), Content = ok and content or tostring(err), Type = ok and "Success" or "Error", Duration = 3 })
+		end
+
+		-- pick a config, then act on it with the row below
+		list = configs:CreateDropdown({
+			Name = "Config", Options = self:ListConfigs(), Default = self._activeConfig, Save = false, Placeholder = "Select a config",
+			Callback = syncAutoload,
+		})
+		local actions = configs:CreateRow({ Columns = 3 })
+		actions:CreateButton({ Name = "Load", Callback = function()
 			local name = list.Value
 			if not name then Mova:Notify({ Title = "Pick a config", Content = "Select a saved config first.", Type = "Warning", Duration = 3 }) return end
 			local ok, err = self:LoadConfig(name)
 			if ok then self._activeConfig = name end
-			Mova:Notify({ Title = ok and "Loaded" or "Load failed", Content = ok and ("Config '" .. name .. "' loaded.") or tostring(err), Type = ok and "Success" or "Error", Duration = 3 })
+			refresh()
+			report(ok, "Loaded", "'" .. name .. "' applied.", err)
 		end })
-		configs:CreateButton({ Name = "Delete", Callback = function()
+		actions:CreateButton({ Name = "Save", Callback = function()
+			local name = list.Value or self._activeConfig or self.ConfigFile
+			local ok, err = self:SaveConfig(name)
+			if ok then self._activeConfig = name end
+			refresh(name)
+			report(ok, "Saved", "'" .. name .. "' now holds the current values.", err)
+		end })
+		actions:CreateButton({ Name = "Delete", Callback = function()
 			local name = list.Value
 			if not name then return end
-			Mova:Dialog({ Title = "Delete config?", Content = "'" .. name .. "' will be removed permanently.", Buttons = {
+			Mova:Dialog({ Title = "Delete '" .. name .. "'?", Content = "The file is removed permanently.", Buttons = {
 				{ Text = "Cancel" },
 				{ Text = "Delete", Style = "Danger", Callback = function()
 					self:DeleteConfig(name)
@@ -4516,17 +4653,36 @@ function Window:_createSettingsTab()
 				end },
 			} })
 		end })
-		local autoload = self:_readAutoload()
-		configs:CreateToggle({ Name = "Autoload selected config", Description = autoload and ("Currently: " .. autoload) or "Loads the selected config when the script starts.", Default = autoload ~= nil, Save = false, Callback = function(state)
+
+		-- create a new one: name + Enter
+		local newInput
+		newInput = configs:CreateInput({
+			Name = "New config", Description = "Saves the current values under a new name.", Placeholder = "Name, then press Enter", Save = false, ClearOnFocus = true,
+			Callback = function(text)
+				local name = trim(text or "")
+				if name == "" then return end
+				name = safeName(name)
+				local ok, err = self:SaveConfig(name)
+				if ok then self._activeConfig = name end
+				newInput:Set("", true)
+				refresh(name)
+				report(ok, "Created", "'" .. name .. "' saved and selected.", err)
+			end,
+		})
+
+		autoloadToggle = configs:CreateToggle({ Name = "Autoload selected config", Description = "Applies it automatically when the script starts.", Default = false, Save = false, Callback = function(state)
 			if state then
-				if list.Value then self:SetAutoload(list.Value) end
-			else
+				if list.Value then self:SetAutoload(list.Value) else autoloadToggle:Set(false, true) end
+			elseif self:_readAutoload() == list.Value then
 				self:SetAutoload(nil)
 			end
+			refresh()
 		end })
-		configs:CreateToggle({ Name = "Auto save", Description = "Save automatically whenever a value changes.", Default = self._autoSave, Save = false, Callback = function(state)
+		configs:CreateToggle({ Name = "Auto save", Description = "Writes every change to the active config.", Default = self._autoSave, Save = false, Callback = function(state)
 			self._autoSave = state
 		end })
+		configs:CreateLabel({ Name = "Stored in " .. self.Store.ConfigFolder .. "/", Icon = "config", Transparent = true })
+		refresh(self._activeConfig)
 	end
 
 	local about = tab:CreateSection({ Name = "About" })
@@ -4553,8 +4709,9 @@ function Window:_showKeySystem(settings, onSuccess)
 	if prop(settings, false, "GrabKeyFromSite") and not keyUrl then keyUrl = keys[1] keys = {} end
 	local link = prop(settings, nil, "Link", "GetKeyLink", "link")
 	local saveKey = prop(settings, true, "SaveKey", "saveKey")
-	local fileName = sanitiseFileName(prop(settings, self.Name .. "_key", "FileName", "fileName"))
-	local keyPath = SETTINGS_FOLDER .. "/keys/" .. fileName .. ".txt"
+	local keyFile = prop(settings, nil, "FileName", "fileName")
+	local store = keyFile and Storage.forScript(keyFile) or self.Store   -- FileName shares one key between scripts
+	store:Migrate(nil, Mova.Folder .. "/keys/" .. safeName(keyFile or (self.Name .. "_key")) .. ".txt")
 
 	local remoteKeys = nil
 	local function fetchRemote()
@@ -4587,9 +4744,9 @@ function Window:_showKeySystem(settings, onSuccess)
 	end
 
 	-- saved key
-	if saveKey and FS.isfile(keyPath) then
-		local saved = FS.readfile(keyPath)
-		if saved and check(saved) then
+	if saveKey and type(store:Get("key")) == "string" then
+		local saved = store:Get("key")
+		if check(saved) then
 			onSuccess()
 			return
 		end
@@ -4667,11 +4824,7 @@ function Window:_showKeySystem(settings, onSuccess)
 			busy = false
 			verify.Text = "Verify"
 			if ok then
-				if saveKey then
-					FS.ensureFolder(SETTINGS_FOLDER)
-					FS.ensureFolder(SETTINGS_FOLDER .. "/keys")
-					FS.writefile(keyPath, trim(box.Text))
-				end
+				if saveKey then store:Set("key", trim(box.Text)) end
 				tween(dim, { BackgroundTransparency = 1 }, 0.25, Motion.Quint, Motion.In)
 				tween(card, { BackgroundTransparency = 1 }, 0.2, Motion.Quint, Motion.In)
 				tween(cardScale, { Scale = 1.04 }, 0.25, Motion.Quint, Motion.In)

@@ -608,7 +608,7 @@ test("Config save / load / list / delete / autoload", function()
 	Mova.Options.Target:Set("Noob", true)
 	local ok, err = Window:SaveConfig("alpha")
 	truthy(ok, tostring(err))
-	truthy(mock.Files["MovaTests/alpha.mova.json"], "file written")
+	truthy(mock.Files["Mova/MovaTests/configs/alpha.json"], "file written")
 	-- mutate everything
 	Mova.Options.AutoFarm:Set(false, true)
 	Mova.Options.FOV:Set(120, true)
@@ -636,6 +636,8 @@ test("Config save / load / list / delete / autoload", function()
 	eq(list[1], "alpha")
 	Window:SetAutoload("alpha")
 	eq(Window:_readAutoload(), "alpha")
+	truthy(mock.Files["Mova/MovaTests/settings.json"]:find('"autoload":"alpha"', 1, true), "autoload lives in settings.json")
+	truthy(mock.Files["MovaTests/autoload.txt"] == nil and mock.Files["Mova/MovaTests/autoload.txt"] == nil, "no stray autoload.txt")
 	truthy(Window:DeleteConfig("alpha"))
 	eq(#Window:ListConfigs(), 0)
 	local bad, why = Window:LoadConfig("missing")
@@ -645,7 +647,34 @@ test("Config save / load / list / delete / autoload", function()
 	Mova.Options.FOV:Set(50)
 	truthy(Window._autoSaveThread, "autosave queued")
 	mock.flush()
-	truthy(mock.Files["MovaTests/default.mova.json"], "autosaved to default")
+	truthy(mock.Files["Mova/MovaTests/configs/default.json"], "autosaved to default")
+end)
+
+test("Storage layout + migration of the old scattered files", function()
+	-- pre-1.1 layout: configs next to theme.txt / autoload.txt inside a root-level FolderName folder
+	mock.Files["OldScript/pvp.mova.json"] = '{"library":"Mova","version":1,"data":{"Legacy_T":true}}'
+	mock.Files["OldScript/theme.txt"] = "Light"
+	mock.Files["OldScript/autoload.txt"] = "pvp"
+	local W4 = Mova:CreateWindow({ Name = "Old Script", ConfigurationSaving = { FolderName = "OldScript" } })
+	local t = W4.Tabs[1] or W4:CreateTab({ Name = "Main" })
+	local legacy = t:CreateToggle({ Name = "Legacy", Flag = "Legacy_T", Default = false })
+	mock.flush() mock.flush()
+	eq(W4.Folder, "Mova/OldScript")
+	eq(W4.ConfigFolder, "Mova/OldScript/configs")
+	truthy(mock.Files["Mova/OldScript/configs/pvp.json"], "config moved into configs/")
+	truthy(mock.Files["OldScript/pvp.mova.json"] == nil and mock.Files["OldScript/theme.txt"] == nil and mock.Files["OldScript/autoload.txt"] == nil, "old files removed")
+	eq(W4.Store:Get("theme"), "Light")
+	eq(W4:_readAutoload(), "pvp")
+	eq(legacy.Value, true, "autoloaded the migrated config")
+	eq(Mova:GetTheme().Name, "Light")
+	Mova:SetTheme("Mono", false)
+	-- names are sanitised and every write stays inside Mova/<Script>/
+	W4:SaveConfig("../../evil/name")
+	truthy(mock.Files["Mova/OldScript/configs/evilname.json"], "path characters stripped")
+	for path in pairs(mock.Files) do
+		if path ~= "mova.lua" and not path:find("^Mova/") and not path:find("^MovaTests") then error("file outside Mova/: " .. path) end
+	end
+	W4:Destroy()
 end)
 
 test("Notifications and dialogs", function()
@@ -714,7 +743,8 @@ test("Key system gates the window", function()
 	mock.click(verify)
 	mock.flush()
 	truthy(W2.Main.Visible, "remote key accepted")
-	truthy(mock.Files["Mova/keys/gated.txt"] == "remote-key-2", "key saved")
+	truthy(mock.Files["Mova/gated/settings.json"]:find('"key":"remote-key-2"', 1, true), "key saved in the shared gated/settings.json")
+	truthy(mock.Files["Mova/keys/gated.txt"] == nil, "no stray key file")
 	-- second window with same file skips the prompt
 	local W3 = Mova:CreateWindow({ Name = "Gated", KeySystem = { Key = { "local-key" }, FileName = "gated", KeyURL = "x" } })
 	truthy(W3.Main.Visible, "saved key auto-accepted")

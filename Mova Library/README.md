@@ -192,7 +192,21 @@ Any `TextLabel/TextButton/TextBox` created through `Mova.New` accepts `Weight = 
 
 ### Configs
 
-Files are written to `<FolderName>/<name>.mova.json` (default folder `Mova/<WindowName>`). The autoload name is stored in `<FolderName>/autoload.txt`. Format:
+Everything Mova writes lives under **one** root folder with a fixed layout — no loose files next to each other, nothing at the workspace root:
+
+```
+Mova/
+├─ icons/                      shared secure-mode asset cache (<id>.png)
+└─ <Script>/                   one folder per window — ConfigurationSaving.FolderName renames it
+   ├─ settings.json            { "theme", "autoload", "key", "discordPrompted" }
+   └─ configs/
+      ├─ default.json          FileName / autosave target
+      └─ pvp.json              anything saved from the Settings tab or Window:SaveConfig("pvp")
+```
+
+`getgenv().MOVA_FOLDER = "MyHub"` moves the root. Names are sanitised (`../x` → `x`) so every write stays inside the script folder. Files from the old layout (`<Folder>/<name>.mova.json`, `theme.txt`, `autoload.txt`, `Mova/keys/*.txt`) are moved into place the first time the window is created. `Window.Store` exposes the same object the library uses (`Get/Set` for `settings.json`, `ListConfigs/ReadConfig/WriteConfig/DeleteConfig`) if your script wants to keep its own values in the same folder.
+
+The **Settings → Configuration** section works on one selected config: pick it in the dropdown, then **Load / Save / Delete** in the row under it; create a new one by typing a name in *New config* and pressing Enter; *Autoload selected config* and *Auto save* are toggles, and the last line shows the folder on disk. Config format:
 
 ```json
 { "library": "Mova", "version": 1, "data": {
