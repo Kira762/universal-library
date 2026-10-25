@@ -62,7 +62,7 @@ Main:CreateSlider({ Name = "Slider", Flag = "TestSlider", Range = { 0, 100 }, In
 Main:CreateDivider("Grouped")
 local section = Main:CreateSection({ Name = "Section (click header to collapse)" })
 section:CreateToggle({ Name = "Inside a section", Flag = "Inner" })
-section:CreateProgress({ Name = "Progress", Value = 65 })
+section:CreateLabel({ Name = "Labels work inside sections too" })
 Main:CreateDivider("Group (Gen 2 row, wraps)")
 local row = Main:CreateGroup({ Direction = "row", Columns = 2 })
 row:CreateToggle({ Name = "Left", Flag = "RowLeft", Default = true })

@@ -138,7 +138,7 @@ game.Players.PlayerAdded:Connect(function()
 	PlayerList:Refresh(names, true)       -- keep the current value if it still exists
 end)
 
--- 6. Visuals tab (colour pickers, progress, dividers) ----------------------------------------
+-- 6. Visuals tab (colour pickers, dividers) ----------------------------------------
 Visuals:CreateDivider("ESP")
 
 Visuals:CreateColorPicker({
@@ -156,14 +156,6 @@ Visuals:CreateColorPicker({
 	Callback = function(color, alpha) print("fill:", color:ToHex(), alpha) end,
 })
 
-local Progress = Visuals:CreateProgress({ Name = "Loading assets", Value = 0, Max = 100, Suffix = "%" })
-task.spawn(function()
-	for i = 1, 100, 5 do
-		Progress:Set(i)
-		task.wait(0.1)
-	end
-	Progress:SetDescription("Done")
-end)
 
 Visuals:CreateLabel({ Name = "Labels can show icons", Icon = 4483362458 })
 Visuals:CreateLabel("Plain string works too")

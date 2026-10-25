@@ -1090,6 +1090,22 @@ local function inputToKey(input)
 	return nil
 end
 
+-- Obsidian's rule for "should a hotkey fire": not while any TextBox has focus. Roblox's
+-- gameProcessedEvent is wrong for this - it is also true for keys the game's own control
+-- scripts consume (WASD, Space, Shift, E near a prompt...), which made keybinds on those keys
+-- silently dead.
+local function isTyping()
+	if not UserInputService then return false end
+	local ok, box = pcall(UserInputService.GetFocusedTextBox, UserInputService)
+	return ok and box ~= nil
+end
+local function hasKeyboard()
+	if not UserInputService then return true end
+	local ok, v = pcall(function() return UserInputService.KeyboardEnabled end)
+	if ok and v == false then return false end
+	return true
+end
+
 ---------------------------------------------------------------------------------------------------
 -- Root ScreenGui + overlay layers (shared by every window)
 ---------------------------------------------------------------------------------------------------
@@ -2435,8 +2451,10 @@ function Container:_createKeybind(props, attachedToggle)
 	el.State = false      -- toggle/hold state
 	el._attached = attachedToggle
 
+	-- Gen 2 style key box: sized to its label, "Recording" while it listens, Esc cancels,
+	-- Backspace clears, a click anywhere else cancels.
 	local field = New("TextButton", {
-		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
+		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.fromOffset(56, 28),
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
@@ -2444,60 +2462,29 @@ function Container:_createKeybind(props, attachedToggle)
 	local fieldHover = hoverOverlay(field)
 	hoverFx(field, fieldHover, nil, { strength = 0.96, enabled = function() return not el.Locked end })
 	local label = New("TextLabel", {
-		Text = keyToString(el.Value), TextSize = 12, Weight = "SemiBold", TextColor3 = "Text", Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0),
+		Text = keyToString(el.Value), TextSize = 12, Weight = "SemiBold", TextColor3 = "Text", Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = field,
 	})
 
 	local listening = false
-	local function render()
+	local function sizeBox(animate)
+		local w = clamp(#label.Text * 7 + 24, 44, 110)
+		if animate then
+			tween(field, { Size = UDim2.fromOffset(w, 28) }, 0.3, Motion.Expo, Motion.Out)
+		else
+			field.Size = UDim2.fromOffset(w, 28)
+		end
+	end
+	local function render(animate)
 		if listening then
-			label.Text = "..."
-			label.TextColor3 = themeValue("Accent")
+			label.Text = "Recording"
+			bindTheme(label, { TextColor3 = "Accent" })
 		else
 			label.Text = keyToString(el.Value)
-			label.TextColor3 = el.Value and themeValue("Text") or themeValue("Placeholder")
+			bindTheme(label, { TextColor3 = el.Value and "Text" or "Placeholder" })
 		end
+		sizeBox(animate)
 	end
-
-	function el:Set(key, silent)
-		key = keyFromName(key)
-		local changed = key ~= self.Value
-		self.Value = key
-		render()
-		syncFlag(self)
-		if changed and not silent then
-			safeCallback(self.ChangedCallback, key, self)
-			if self.CallOnChange then safeCallback(self.Callback, key, self) end
-			if self.Mode == "Always" and key then self.State = true safeCallback(self.Callback, true, self) end
-		end
-		if changed then self:_fireChanged() end
-		return self
-	end
-	el.SetValue = el.Set
-	function el:Get() return self.Value end
-	function el:GetState() return self.State end
-	function el:SetMode(mode) self.Mode = mode return self end
-	function el:_syncFromToggle()
-		if self._attached then self.State = self._attached.Value end
-	end
-
-	local function setListening(state)
-		listening = state
-		if state then
-			if ActiveKeybindListener and ActiveKeybindListener ~= setListening then ActiveKeybindListener(false) end
-			ActiveKeybindListener = setListening
-		elseif ActiveKeybindListener == setListening then
-			ActiveKeybindListener = nil
-		end
-		KeybindListening = ActiveKeybindListener ~= nil
-		tween(stroke, { Color = state and themeValue("Accent") or themeValue("Stroke"), Transparency = state and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
-		render()
-	end
-	el._cleanup[#el._cleanup + 1] = function() if listening then setListening(false) end end
-	connect(field.MouseButton1Click, function()
-		if el.Locked then return end
-		setListening(not listening)
-	end)
 
 	local function fire(state)
 		if el._attached then
@@ -2506,34 +2493,111 @@ function Container:_createKeybind(props, attachedToggle)
 			safeCallback(el.Callback, state, el)
 		end
 	end
+	local function releaseHold()
+		if el.Mode == "Hold" and el.State then
+			el.State = false
+			fire(false)
+		end
+	end
 
-	connect(UserInputService and UserInputService.InputBegan, function(input, processed)
+	function el:Set(key, silent)
+		key = keyFromName(key)
+		local changed = key ~= self.Value
+		if changed then releaseHold() end
+		self.Value = key
+		render(true)
+		syncFlag(self)
+		if changed and not silent then
+			safeCallback(self.ChangedCallback, key, self)
+			if self.CallOnChange then safeCallback(self.Callback, key, self) end
+			if self.Mode == "Always" then
+				self.State = key ~= nil
+				safeCallback(self.Callback, self.State, self)
+			end
+		end
+		if changed then self:_fireChanged() end
+		return self
+	end
+	el.SetValue = el.Set
+	function el:Get() return self.Value end
+	function el:GetState() return self.State end
+	function el:SetMode(mode)
+		releaseHold()
+		self.Mode = mode
+		return self
+	end
+	function el:_syncFromToggle()
+		if self._attached then self.State = self._attached.Value end
+	end
+
+	local function setListening(state)
+		if state == listening then return end
+		listening = state
+		if state then
+			if ActiveKeybindListener and ActiveKeybindListener ~= setListening then ActiveKeybindListener(false) end
+			ActiveKeybindListener = setListening
+			KeybindListening = true
+		elseif ActiveKeybindListener == setListening then
+			ActiveKeybindListener = nil
+			-- clear next frame: the key that ended recording is still being dispatched and the
+			-- window's toggle-key listener may run after us on the same press (Gen 2 does this too)
+			task.defer(function() if ActiveKeybindListener == nil then KeybindListening = false end end)
+		end
+		tween(stroke, { Color = state and themeValue("Accent") or themeValue("Stroke"), Transparency = state and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
+		render(true)
+	end
+	el._cleanup[#el._cleanup + 1] = function() if listening then setListening(false) end end
+	connect(field.MouseButton1Click, function()
+		if el.Locked then return end
+		if not listening and not hasKeyboard() then
+			if el.Window and el.Window.Notify then el.Window:Notify({ Title = "No keyboard", Content = "Connect a keyboard to bind keys.", Type = "Warning", Duration = 3 }) end
+			return
+		end
+		setListening(not listening)
+	end)
+
+	local function insideField(pos)
+		local p, sz = field.AbsolutePosition, field.AbsoluteSize
+		return pos.X >= p.X and pos.X <= p.X + sz.X and pos.Y >= p.Y and pos.Y <= p.Y + sz.Y
+	end
+
+	connect(UserInputService and UserInputService.InputBegan, function(input)
 		if el.Destroyed then return end
 		if listening then
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				-- the click that opened us lands inside the box; anything outside cancels
+				if not insideField(input.Position) then setListening(false) end
+				return
+			end
 			local key = inputToKey(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then return end
-			if key then
+			if not key then return end
+			if key == Enum.KeyCode.Escape then
+				setListening(false)                        -- cancel, keep the old key
+			elseif key == Enum.KeyCode.Backspace or key == Enum.KeyCode.Delete then
 				setListening(false)
-				if key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
-					el:Set(nil)
-				elseif not indexOf(el.Blacklist, key.Name) then
-					el:Set(key)
-				else
-					render()
-				end
+				el:Set(nil)                                -- clear
+			elseif indexOf(el.Blacklist, key.Name) then
+				return                                     -- keep recording
+			elseif el.Window and el.Window.ToggleKey == key and not el._isToggleKeybind then
+				setListening(false)
+				if el.Window.Notify then el.Window:Notify({ Title = "Key in use", Content = keyToString(key) .. " already opens and closes the menu.", Type = "Warning", Duration = 3 }) end
+			else
+				setListening(false)
+				el:Set(key)
 			end
 			return
 		end
-		if processed and input.UserInputType == Enum.UserInputType.Keyboard then return end
-		if el.Locked or not el.Value then return end
-		local key = inputToKey(input)
-		if key ~= el.Value then return end
+		if KeybindListening or el.Locked or not el.Value then return end
+		if input.UserInputType == Enum.UserInputType.Keyboard and isTyping() then return end
+		if inputToKey(input) ~= el.Value then return end
 		if el.Mode == "Toggle" then
 			if el._attached then el.State = not el._attached.Value else el.State = not el.State end
 			fire(el.State)
 		elseif el.Mode == "Hold" then
-			el.State = true
-			fire(true)
+			if not el.State then
+				el.State = true
+				fire(true)
+			end
 		elseif el.Mode == "Always" then
 			-- always: callback(true) fired once on bind, nothing on press
 		else
@@ -2548,7 +2612,7 @@ function Container:_createKeybind(props, attachedToggle)
 		end
 	end)
 
-	render()
+	render(false)
 	registerFlag(el)
 	return el
 end
@@ -2829,45 +2893,6 @@ function Container:CreateDivider(props)
 		New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = holder })
 	end
 	self.Elements[#self.Elements + 1] = el
-	return el
-end
-
-function Container:CreateProgress(props)
-	props = props or {}
-	local el = buildCard(self, props, "Progress", 60, true)
-	el.Min = prop(props, 0, "Min", "min")
-	el.Max = prop(props, 100, "Max", "max")
-	el.Value = clamp(prop(props, el.Min, "Value", "Default", "value", "default"), el.Min, el.Max)
-	local showValue = prop(props, true, "ShowValue", "showValue")
-	local suffix = prop(props, "%", "Suffix", "suffix")
-
-	el.Card.Size = UDim2.new(1, 0, 0, 58)
-	el.SizeConstraint.MinSize = Vector2.new(0, 58)
-	el.TextPadding.PaddingBottom = UDim.new(0, 13 + 14) -- reserve the bar row so a description can't run into it
-	local valueLabel = New("TextLabel", {
-		Text = "", TextSize = 12, TextColor3 = "TextDim", Weight = "SemiBold", Size = UDim2.fromOffset(60, 20), AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 12), TextXAlignment = Enum.TextXAlignment.Right, Visible = showValue, Parent = el.Card,
-	})
-	local track = New("Frame", { BackgroundColor3 = "Track", Size = UDim2.new(1, -28, 0, 6), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -12), Parent = el.Card })
-	Corner(3, track)
-	local fill = New("Frame", { BackgroundColor3 = WHITE, Size = UDim2.new(0, 0, 1, 0), Parent = track }) -- colour comes from the gradient
-	Corner(3, fill)
-	local grad = New("UIGradient", { Parent = fill })
-	onTheme(grad, function() grad.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
-
-	function el:Set(value, silent)
-		value = clamp(tonumber(value) or self.Min, self.Min, self.Max)
-		self.Value = value
-		local alpha = (self.Max > self.Min) and (value - self.Min) / (self.Max - self.Min) or 0
-		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, Motion.slow, Motion.Expo, Motion.Out)
-		valueLabel.Text = formatNumber(alpha * 100, 0) .. suffix
-		if suffix ~= "%" then valueLabel.Text = formatNumber(value, 0) .. suffix end
-		if not silent then safeCallback(self.Callback, value, self) end
-		return self
-	end
-	el.SetValue = el.Set
-	el.Save = false
-	el:Set(el.Value, true)
 	return el
 end
 
@@ -3470,8 +3495,8 @@ function Mova:CreateWindow(props)
 
 	-- toggle key
 	connect(UserInputService and UserInputService.InputBegan, function(input, processed)
-		if processed or self.Destroyed or KeybindListening then return end
-		if self.ToggleKey and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.ToggleKey then
+		if self.Destroyed or KeybindListening then return end
+		if self.ToggleKey and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.ToggleKey and not isTyping() then
 			self:Toggle()
 		end
 	end)

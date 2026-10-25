@@ -78,7 +78,7 @@ While the repository is private, save `source.lua` as `mova.lua` in the executor
 ## Feature overview
 
 - **Window**: title/subtitle/icon, sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable (mouse + touch), kept on screen.
-- **Elements**: Button, Toggle (+ attached keybind), Slider, Input (numeric / live / on-enter), Dropdown (single, multi, type-to-filter, `Refresh`), Keybind (4 modes), ColorPicker (HSV square, hue, optional alpha, hex + RGB boxes), Label (with icon), Paragraph, Divider, Progress, Section (collapsible) / Groupbox.
+- **Elements**: Button, Toggle (+ attached keybind), Slider, Input (numeric / live / on-enter), Dropdown (single, multi, type-to-filter, `Refresh`), Keybind (4 modes), ColorPicker (HSV square, hue, optional alpha, hex + RGB boxes), Label (with icon), Paragraph, Divider, Section (collapsible) / Groupbox.
 - **Overlays**: Notifications (4 types, progress bar, action buttons), Dialogs (Primary/Neutral/Danger buttons), popups close on outside click and stay inside the viewport.
 - **Themes**: Mono (default, monochrome), Dark, Light, Midnight, Ocean, Ember, Amethyst, Rose, Mocha; `Mova:RegisterTheme(name, table)`; partial tables fall back to Dark.
 - **Configs**: `Window:SaveConfig / LoadConfig / ListConfigs / DeleteConfig / SetAutoload`, autosave, built-in Settings tab UI for all of it.
@@ -126,12 +126,11 @@ Every constructor accepts a table; `Name`/`Title`/`Text` is the label, `Descript
 | `CreateSlider{ Range = {min,max}` or `Min/Max, Increment, Default, Suffix, Callback(n) }` | number | `Increment` controls snapping and decimals; the value box accepts typing | |
 | `CreateInput{ Default, Placeholder, Numeric, Finished = true, ClearOnFocus, Callback(text) }` | string | `Finished = false` fires per keystroke | |
 | `CreateDropdown{ Options, Default, MultipleOptions, Searchable, AllowNone = true, Callback(v) }` | string \| table | > 6 options get a filter box automatically | `Refresh(options, keepValue)`, `Open()`, `Close()` |
-| `CreateKeybind{ Default, Mode = "Press", Callback, ChangedCallback, Blacklist }` | KeyCode \| UserInputType | Modes: `Press` (callback(key)), `Toggle` / `Hold` (callback(state)), `Always` | `SetMode()`, `GetState()` |
+| `CreateKeybind{ Default, Mode = "Press", Callback, ChangedCallback, Blacklist }` | KeyCode \| UserInputType | Modes: `Press` (callback(key)), `Toggle` / `Hold` (callback(state)), `Always`. Click the box to record: Esc cancels, Backspace clears, clicking elsewhere cancels; keys fire unless a text box is focused (not blocked by WASD/Space-style game bindings) | `SetMode()`, `GetState()` |
 | `CreateColorPicker{ Color, Alpha, Callback(color, alpha) }` | Color3 (+ alpha) | `Alpha` enables the transparency bar | `Set(color | "#hex", alpha)`, `GetHex()`, `Open()`, `Close()` |
 | `CreateLabel{ Name, Icon, Transparent }` or `CreateLabel("text")` | — | | `Set(text)` |
 | `CreateParagraph{ Title, Content }` | — | | `Set{ Title, Content }` |
 | `CreateDivider("text")` | — | | |
-| `CreateProgress{ Value, Max = 100, Suffix = "%" }` | number | | `Set(n)` |
 | `CreateSection{ Name, Collapsed }` | — | Returns a container with all constructors | `SetCollapsed(bool)` |
 | `CreateGroup{ Direction = "row"\|"column", Columns = 2, Gap = 6 }` | — | Rayfield Gen 2 layout container: a row packs children side by side (wrapping past `Columns`), a column stacks them; nest a row of columns for a grid. Aliases `CreateRow` / `CreateColumn` | `SetVisible(bool)`, `Destroy()` |
 

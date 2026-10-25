@@ -134,7 +134,7 @@ makeEnum("EasingStyle", { "Linear", "Quad", "Quint", "Back", "Sine", "Exponentia
 makeEnum("EasingDirection", { "In", "Out", "InOut" })
 makeEnum("UserInputType", { "MouseButton1", "MouseButton2", "MouseButton3", "MouseMovement", "Touch", "Keyboard", "None" })
 makeEnum("UserInputState", { "Begin", "Change", "End", "Cancel" })
-makeEnum("KeyCode", { "Unknown", "A", "B", "C", "D", "E", "F", "K", "Q", "X", "Z", "LeftShift", "RightShift", "LeftControl", "Escape", "Backspace", "Return", "Space", "One", "Two", "F1" })
+makeEnum("KeyCode", { "Unknown", "A", "B", "C", "D", "E", "F", "K", "Q", "X", "Z", "LeftShift", "RightShift", "LeftControl", "Escape", "Backspace", "Delete", "Return", "Space", "One", "Two", "F1" })
 makeEnum("Platform", { "Windows", "OSX", "IOS", "Android", "XBoxOne", "None" })
 makeEnum("AutomaticSize", { "None", "X", "Y", "XY" })
 makeEnum("TextXAlignment", { "Left", "Center", "Right" })
@@ -265,9 +265,9 @@ end
 function methods:GetAttribute(k) return self._attributes[k] end
 function methods:SetAttribute(k, v) self._attributes[k] = v end
 function methods:GetFullName() return self._props.Name end
-function methods:CaptureFocus() self._focused = true end
-function methods:ReleaseFocus(enter) self._focused = false if self._signals.FocusLost then self._signals.FocusLost:Fire(enter or false) end end
-function methods:IsFocused() return self._focused == true end
+function methods:CaptureFocus() M.FocusedBox = self end
+function methods:ReleaseFocus(enter) if M.FocusedBox == self then M.FocusedBox = nil end if self._signals.FocusLost then self._signals.FocusLost:Fire(enter or false) end end
+function methods:IsFocused() return M.FocusedBox == self end
 function methods:TweenSize() return true end
 function methods:TweenPosition() return true end
 function methods:GetService(name) return M.Services[name] or error("unknown service " .. tostring(name)) end
@@ -368,6 +368,7 @@ function UIS:GetPlatform() return Enum.Platform.Windows end
 function UIS:GetMouseLocation() return Vector2.new(640, 360) end
 function UIS:GetStringForKeyCode(k) return k.Name end
 function UIS:IsKeyDown() return false end
+function UIS:GetFocusedTextBox() return M.FocusedBox end
 
 local tweensPlayed = 0
 M.TweensPlayed = function() return tweensPlayed end
