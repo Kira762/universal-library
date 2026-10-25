@@ -683,6 +683,63 @@ test("Profile card: settings shortcut, SetProfile, reflow", function()
 	W5:Destroy()
 end)
 
+test("Tags + topbar layout: title, tags and the in-bar search never overlap", function()
+	local W6 = Mova:CreateWindow({ Name = "Tagged Window", Subtitle = "sub", Tags = { { Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255, 175, 15) } } })
+	W6.Main.Size = UDim2.fromOffset(640, 440)
+	mock.flush()
+	local beta = W6.Tags[1]
+	eq(beta.Frame.Size.Y.Offset, 20)
+	eq(beta.Frame.BackgroundTransparency, 0, "filled style is opaque")
+	local online = W6:CreateTag({ Text = "Online", Dot = true, Color = "Success" })
+	local clicked = false
+	local hub = W6:CreateTag({ Text = "Hub", Icon = "settings", Callback = function() clicked = true end })
+	eq(#W6.Tags, 3)
+	truthy(online.DotFrame.Visible and not online.IconLabel.Visible, "dot variant")
+	truthy(hub.IconLabel.Visible and hub.IconLabel.Image ~= "", "icon variant")
+	truthy(online.Frame.BackgroundTransparency > 0.8 and online.Stroke.Transparency < 1, "soft style: tint + hairline")
+	mock.click(hub.Frame)
+	truthy(clicked, "tag callback")
+	-- geometry: tags start after the title block, search sits after the tags, buttons stay clear
+	local titleEnd = W6.TitleLabel.Position.X.Offset + W6.TitleLabel.Size.X.Offset
+	truthy(W6.TagBar.Visible and W6.TagBar.Position.X.Offset >= titleEnd + 12, "tags after the title")
+	local buttonsLeft = 640 - (3 * 30 + 2 * 2 + 10) - 10
+	truthy(W6.TagBar.Position.X.Offset + W6.TagBar.Size.X.Offset <= buttonsLeft, "tags clear of the buttons")
+	W6._setSearch(true)
+	mock.flush()
+	local sb = W6.SearchBar
+	truthy(sb.Visible and sb.Parent == W6.Topbar, "search lives in the topbar")
+	eq(sb.Position.X.Offset, buttonsLeft, "right edge of the search meets the buttons")
+	local searchLeft = sb.Position.X.Offset - sb.Size.X.Offset
+	local tagsEnd = W6.TagBar.Position.X.Offset + W6.TagBar.Size.X.Offset
+	truthy(sb.Size.X.Offset >= 150, "search gets at least its minimum width")
+	truthy(searchLeft >= tagsEnd + 12, "search starts after the tags")
+	-- narrow window: tags step aside for the search, the title truncates but never disappears
+	W6.Main.Size = UDim2.fromOffset(380, 300)
+	mock.flush()
+	truthy(not W6.TagBar.Visible, "tags give way to the search when the row is tight")
+	truthy(W6.TitleLabel.Size.X.Offset >= 64, "title keeps its minimum")
+	truthy(sb.Position.X.Offset - sb.Size.X.Offset >= W6.TitleLabel.Position.X.Offset + W6.TitleLabel.Size.X.Offset + 12, "search clears the title")
+	W6._setSearch(false)
+	mock.flush() mock.flush()
+	truthy(not sb.Visible and W6.TagBar.Visible, "tags return when the search closes")
+	-- tags that do not fit hide from the end instead of overlapping the buttons
+	local shown = 0
+	for _, t in ipairs(W6.Tags) do if t.Frame.Visible then shown = shown + 1 end end
+	truthy(shown >= 1 and shown <= 3)
+	W6.Main.Size = UDim2.fromOffset(640, 440)
+	mock.flush()
+	for _, t in ipairs(W6.Tags) do truthy(t.Frame.Visible, "all tags fit again at 640") end
+	-- API
+	online:Set({ Text = "Away", Color = "Warning" })
+	eq(online.Label.Text, "Away")
+	hub:SetVisible(false)
+	truthy(not hub.Frame.Visible)
+	hub:Destroy()
+	mock.flush() mock.flush()
+	eq(#W6.Tags, 2)
+	W6:Destroy()
+end)
+
 test("Storage layout + migration of the old scattered files", function()
 	-- pre-1.1 layout: configs next to theme.txt / autoload.txt inside a root-level FolderName folder
 	mock.Files["OldScript/pvp.mova.json"] = '{"library":"Mova","version":1,"data":{"Legacy_T":true}}'

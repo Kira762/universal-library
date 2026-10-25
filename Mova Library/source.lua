@@ -3635,6 +3635,7 @@ Window.__index = Window
 -- bottom fade over the content area (Gen 2): height, and the extra page padding that keeps the
 -- last row readable when a page is scrolled to its end
 local BOTTOM_FADE_H, BOTTOM_FADE_PAD = 52, 12
+local TAG_H, TAG_GAP = 20, 6 -- topbar tag pill height / spacing
 
 function Mova:CreateWindow(props)
 	props = props or {}
@@ -3740,19 +3741,28 @@ function Mova:CreateWindow(props)
 		titleX = 32
 	end
 	local titleLabel = New("TextLabel", {
-		Weight = "SemiBold", TextSize = 15, Size = UDim2.new(1, -titleX - 120, 0, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 8 or 15),
+		Weight = "SemiBold", TextSize = 15, Size = UDim2.fromOffset(120, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 8 or 15),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 	})
 	bindText(titleLabel, tostring(self.Name))
 	self.TitleLabel = titleLabel
+	local sub
 	if self.Subtitle then
-		local sub = New("TextLabel", {
-			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(1, -titleX - 120, 0, 14), Position = UDim2.fromOffset(titleX, 26),
+		sub = New("TextLabel", {
+			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.fromOffset(120, 14), Position = UDim2.fromOffset(titleX, 26),
 			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 		})
 		bindText(sub, tostring(self.Subtitle))
 		self.SubtitleLabel = sub
 	end
+	self._titleX = titleX
+
+	-- tags (Rayfield Gen 2 `tagContainer`): small pills in a row right after the title block.
+	-- The topbar layout below places them, hides the ones that don't fit and gives their room to
+	-- the search field when it opens.
+	local tagBar = New("Frame", { Name = "Tags", BackgroundTransparency = 1, Size = UDim2.fromOffset(0, TAG_H), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, titleX, 0.5, 0), Visible = false, Parent = topbar })
+	self.TagBar = tagBar
+	self.Tags = {}
 
 	-- topbar buttons (code-drawn glyphs, hover wash; close tints red)
 	local buttons = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, TOPBAR), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Parent = topbar })
@@ -3780,29 +3790,26 @@ function Mova:CreateWindow(props)
 	local minBtn, minGlyph = topButton("minus", 2)
 	local searchBtn, searchGlyph = topButton("search", 1)
 
-	-- Search field: a compact floating pill (WindUI's palette width, Rayfield 2022's drop-down
-	-- entrance) centred over the content area just under the topbar - never wider than 360px, so
-	-- it reads as a field rather than a bar that swallows the whole title row. Magnifier inside on
-	-- the left, clear button inside on the right; the results page starts below it.
-	local SEARCH_H = 36
+	-- Search field: lives INSIDE the topbar, in whatever room is free between the title / tags
+	-- and the buttons. The topbar layout sizes it: tags give way first, then the title truncates,
+	-- so nothing ever overlaps. It grows out of the search button (right-anchored) when opened.
+	local SEARCH_H = 32
 	local searchHolder = New("Frame", {
-		Name = "Search", BackgroundColor3 = "Field", BackgroundTransparency = 1, Size = UDim2.new(1, -sidebarWidth - 28, 0, SEARCH_H),
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6), ClipsDescendants = false, Visible = false, ZIndex = 15, Parent = main,
+		Name = "Search", BackgroundColor3 = "Field", BackgroundTransparency = 1, Size = UDim2.fromOffset(SEARCH_H, SEARCH_H),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -120, 0.5, 0), ClipsDescendants = true, Visible = false, ZIndex = 15, Parent = topbar,
 	})
-	New("UISizeConstraint", { MaxSize = Vector2.new(360, SEARCH_H), Parent = searchHolder })
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = searchHolder })
 	local searchStroke = Stroke(searchHolder)
 	searchStroke.Transparency = 1
-	local searchShadow = Shadow(searchHolder, "Shadow", 24, 1)
-	local searchIconHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), ZIndex = 16, Parent = searchHolder })
-	local searchFieldGlyph = Glyph("search", searchIconHolder, "TextDim", 14, 1.6)
+	local searchIconHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 11, 0.5, 0), ZIndex = 16, Parent = searchHolder })
+	local searchFieldGlyph = Glyph("search", searchIconHolder, "TextDim", 13, 1.6)
 	local searchBox = New("TextBox", {
 		Text = "", PlaceholderText = "Search all tabs", PlaceholderColor3 = "Placeholder", TextSize = 13, ClearTextOnFocus = false, TextTransparency = 1,
-		Size = UDim2.new(1, -38 - 34, 1, 0), Position = UDim2.fromOffset(38, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 16, Parent = searchHolder,
+		Size = UDim2.new(1, -34 - 32, 1, 0), Position = UDim2.fromOffset(34, 0), TextXAlignment = Enum.TextXAlignment.Left, ClipsDescendants = true, ZIndex = 16, Parent = searchHolder,
 	})
 	local clearBtn = New("TextButton", {
-		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -5, 0.5, 0), ZIndex = 17, Parent = searchHolder,
+		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -4, 0.5, 0), ZIndex = 17, Parent = searchHolder,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = clearBtn })
 	local clearGlyph = Glyph("close", clearBtn, "TextDim", 12, 1.6)
@@ -3942,7 +3949,7 @@ function Mova:CreateWindow(props)
 
 	-- search results page
 	local searchPage = New("ScrollingFrame", { Name = "SearchPage", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
-	Padding(searchPage, 10 + 36 + 12, 14, 14 + BOTTOM_FADE_PAD, 14) -- the floating search field sits over the top of this page
+	Padding(searchPage, 14, 14, 14 + BOTTOM_FADE_PAD, 14)
 	List(searchPage, 6, nil, Enum.HorizontalAlignment.Center)
 	self.SearchPage = searchPage
 	self.SearchEmpty = New("TextLabel", { Text = "No results", TextSize = 13, TextColor3 = "TextDim", Size = UDim2.new(1, 0, 0, 30), Visible = false, LayoutOrder = -1, Parent = searchPage })
@@ -4046,28 +4053,108 @@ function Mova:CreateWindow(props)
 	connect(closeBtn.MouseButton1Click, function() self:Hide() end)
 	connect(minBtn.MouseButton1Click, function() self:ToggleMinimise() end)
 	local searchOpen = false
-	local SEARCH_Y = TOPBAR + 10
+	-- Topbar layout: [mark][title block][tags][search when open][buttons]. Everything to the left
+	-- of the buttons is measured and placed by hand so the pieces never overlap:
+	--   * the title block is its natural width, truncating only when it has to;
+	--   * tags follow it and hide from the end when they stop fitting;
+	--   * the open search field takes the rest - tags give way first, then the title shrinks
+	--     to TITLE_MIN so the field always gets at least SEARCH_MIN.
+	local TITLE_MIN, SEARCH_MIN, GAP = 64, 150, 12
+	local BUTTONS_W = 3 * 30 + 2 * 2 + 10
+	local function textWidth(label)
+		if not label then return 0 end
+		local w = label.TextBounds.X
+		if w <= 0 then w = #tostring(label.Text) * 7 end
+		return w
+	end
+	local function layoutTopbar(animateSearch)
+		if self.Destroyed then return end
+		local left, right = titleX, main.Size.X.Offset - BUTTONS_W - 10
+		local span = math.max(right - left, 0)
+		local titleW = math.ceil(math.max(textWidth(titleLabel), textWidth(sub))) + 4
+		local tags, tagsW = {}, 0
+		for _, tag in ipairs(self.Tags) do
+			if tag.Enabled and not tag.Destroyed then
+				tags[#tags + 1] = tag
+				tagsW = tagsW + tag.Width + (#tags > 1 and TAG_GAP or 0)
+			end
+		end
+		local tagsOn = #tags > 0
+		local searchNeed = searchOpen and (SEARCH_MIN + GAP) or 0
+		if searchOpen then
+			local free = span - titleW - (tagsOn and (GAP + tagsW) or 0)
+			if free < searchNeed and tagsOn then tagsOn = false free = span - titleW end
+			if free < searchNeed then titleW = math.max(TITLE_MIN, span - searchNeed) end
+		elseif tagsOn and titleW + GAP + tagsW > span then
+			-- the title keeps its natural width (up to half the row); tags that don't fit hide instead
+			titleW = math.max(TITLE_MIN, math.min(titleW, math.floor(span * 0.5)))
+		end
+		titleW = clamp(titleW, 0, span)
+		titleLabel.Size = UDim2.fromOffset(titleW, 18)
+		if sub then sub.Size = UDim2.fromOffset(titleW, 14) end
+		local cursor = left + titleW
+		tagBar.Visible = tagsOn
+		if tagsOn then
+			cursor = cursor + GAP
+			tagBar.Position = UDim2.new(0, cursor, 0.5, 0)
+			local limit, x, shown = right - searchNeed, 0, 0
+			for _, tag in ipairs(self.Tags) do
+				local fits = false
+				if tag.Enabled and not tag.Destroyed then
+					local w = tag.Width + (shown > 0 and TAG_GAP or 0)
+					fits = cursor + x + w <= limit
+					if fits then
+						tag.Frame.Position = UDim2.new(0, x + (shown > 0 and TAG_GAP or 0), 0.5, 0)
+						x = x + w
+						shown = shown + 1
+					end
+				end
+				tag.Frame.Visible = fits
+			end
+			tagBar.Size = UDim2.fromOffset(x, TAG_H)
+			cursor = cursor + x
+		end
+		if searchOpen or searchHolder.Visible then
+			local width = math.max(right - (cursor + GAP), SEARCH_H)
+			searchHolder.Position = UDim2.new(0, right, 0.5, 0)
+			if animateSearch then
+				tween(searchHolder, { Size = UDim2.fromOffset(width, SEARCH_H) }, 0.35, Motion.Expo, Motion.Out)
+			elseif searchOpen then
+				searchHolder.Size = UDim2.fromOffset(width, SEARCH_H)
+			end
+		end
+	end
+	self._layoutTopbar = layoutTopbar
+	connect(main:GetPropertyChangedSignal("Size"), function() layoutTopbar() end)
+	connect(titleLabel:GetPropertyChangedSignal("TextBounds"), function() layoutTopbar() end)
+	if sub then connect(sub:GetPropertyChangedSignal("TextBounds"), function() layoutTopbar() end) end
+	layoutTopbar()
+
 	local function setSearch(state)
 		if state == searchOpen then return end
 		searchOpen = state
 		if state then
 			searchHolder.Visible = true
-			searchHolder.Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6)
+			searchHolder.Size = UDim2.fromOffset(SEARCH_H, SEARCH_H)
 			tintGlyph(searchGlyph, themeValue("Accent"))
-			tween(searchHolder, { Position = UDim2.new(0.5, sidebarWidth / 2, 0, SEARCH_Y), BackgroundTransparency = 0 }, 0.35, Motion.Expo, Motion.Out)
+			layoutTopbar(true) -- grows out of the button into the free room
+			tween(searchHolder, { BackgroundTransparency = 0 }, Motion.base)
 			tween(searchStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.35)
 			tween(searchBox, { TextTransparency = 0 }, 0.35)
-			if searchShadow then tween(searchShadow, { Transparency = 0.6 }, 0.35) end
 			task.defer(function() pcall(function() searchBox:CaptureFocus() end) end)
 		else
 			searchBox.Text = ""
 			pcall(function() searchBox:ReleaseFocus() end)
 			tintGlyph(searchGlyph, themeValue("TextDim"), Motion.slow)
-			tween(searchHolder, { Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
+			tween(searchHolder, { Size = UDim2.fromOffset(SEARCH_H, SEARCH_H), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
 			tween(searchStroke, { Transparency = 1 }, Motion.base)
 			tween(searchBox, { TextTransparency = 1 }, Motion.base)
-			if searchShadow then tween(searchShadow, { Transparency = 1 }, Motion.base) end
-			task.delay(Motion.base + 0.01, function() if not searchOpen then searchHolder.Visible = false end end)
+			task.delay(Motion.base + 0.01, function()
+				if not searchOpen then
+					searchHolder.Visible = false
+					layoutTopbar() -- title and tags take their room back
+				end
+			end)
 		end
 	end
 	self._setSearch = setSearch
@@ -4162,6 +4249,10 @@ end
 function Window:_finishSetup(props)
 	-- settings tab is built lazily on first SelectTab so user tabs come first in the sidebar
 	self._buildSettings = prop(props, true, "SettingsTab", "settingsTab", "ShowSettings")
+	local tagList = prop(props, nil, "Tags", "tags")
+	if typeof(tagList) == "table" then
+		for _, t in ipairs(tagList) do self:CreateTag(t) end
+	end
 	local discord = prop(props, nil, "Discord", "discord")
 	if typeof(discord) == "table" and discord.Enabled and discord.Invite and discord.Invite ~= "" then
 		self._discordInvite = discord.Invite
@@ -4520,7 +4611,7 @@ end
 Window.ToggleMinimize = Window.ToggleMinimise
 Window.Minimize = Window.ToggleMinimise
 
-function Window:SetTitle(text) self.Name = text bindText(self.TitleLabel, tostring(text)) return self end
+function Window:SetTitle(text) self.Name = text bindText(self.TitleLabel, tostring(text)) if self._layoutTopbar then self._layoutTopbar() end return self end
 
 -- Profile card: SetProfile{ Name = , Subtitle = , Image = } changes any of the lines (nil keeps,
 -- false clears the subtitle line); SetProfileVisible(false) removes the card and gives the tab
@@ -4550,7 +4641,161 @@ function Window:SetProfileVisible(state)
 	return self
 end
 function Window:IsProfileVisible() return self._profileShown end
-function Window:SetSubtitle(text) if self.SubtitleLabel then bindText(self.SubtitleLabel, tostring(text)) end return self end
+function Window:SetSubtitle(text) if self.SubtitleLabel then bindText(self.SubtitleLabel, tostring(text)) end if self._layoutTopbar then self._layoutTopbar() end return self end
+
+-- Tags -------------------------------------------------------------------------------------------
+-- Rayfield Gen 2's topbar tags (24px filled pills next to the title) with a few more options:
+--   Style = "Soft" (default: tinted pill, coloured text and hairline - sits well on any theme)
+--         | "Filled" (Gen 2: solid colour, contrast text)
+--   Color = Color3 or a theme key ("Accent", "Success", "Warning", "Error" ...) that follows the theme
+--   Icon / Dot = true (status dot instead of an icon), Callback (makes the tag clickable), Order
+-- Tags that don't fit the topbar hide from the end; they also step aside for the search field.
+
+local function luminance(c)
+	return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+end
+
+function Window:CreateTag(props)
+	if typeof(props) == "string" then props = { Text = props } end
+	props = props or {}
+	local tag = {
+		Window = self, Type = "Tag", Enabled = true, Destroyed = false, Width = 0,
+		Text = prop(props, nil, "Text", "text", "Title", "title", "Name"),
+		Icon = prop(props, nil, "Icon", "icon", "Image"),
+		Dot = prop(props, false, "Dot", "dot"),
+		Color = prop(props, "Accent", "Color", "color", "Colour"),
+		Style = prop(props, "Soft", "Style", "style"),
+		Callback = prop(props, nil, "Callback", "callback", "OnClick"),
+		Order = prop(props, #self.Tags + 1, "Order", "order"),
+	}
+	assert(tag.Text or tag.Icon or tag.Dot, "a tag needs Text, an Icon or Dot = true")
+	local frame = New("TextButton", {
+		Name = "Tag", Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(20, TAG_H), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Parent = self.TagBar,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = frame })
+	local stroke = New("UIStroke", { Color = WHITE, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
+	local icon = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(12, 12), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0), ImageTransparency = 1, Visible = false, Parent = frame })
+	local dot = New("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Visible = false, Parent = frame })
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = dot })
+	local label = New("TextLabel", { Text = "", TextSize = 11, Weight = "Medium", TextColor3 = WHITE, TextTransparency = 1, Size = UDim2.fromOffset(0, TAG_H), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+	tag.Frame, tag.Label, tag.IconLabel, tag.DotFrame, tag.Stroke = frame, label, icon, dot, stroke
+	ThemeRegistry[label] = { FontFace = "@Medium" }
+
+	local shown = false
+	local function colour()
+		if typeof(tag.Color) == "Color3" then return tag.Color end
+		return themeValue(tag.Color) or themeValue("Accent")
+	end
+	local function paint(time)
+		local c = colour()
+		local filled = tag.Style == "Filled"
+		local fg
+		if filled then
+			fg = luminance(c) > 0.55 and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(250, 250, 252)
+		else
+			-- soft text is the tag colour pushed towards the theme's text so it stays legible on
+			-- light pages (a pastel on white) as well as dark ones
+			local lightPage = luminance(themeValue("Background") or Color3.new()) > 0.5
+			fg = lightPage and c:Lerp(Color3.new(0, 0, 0), 0.45) or c:Lerp(Color3.new(1, 1, 1), 0.15)
+		end
+		local props = {
+			bg = filled and 0 or 0.86, stroke = filled and 1 or 0.6,
+		}
+		local t = time or 0
+		tween(frame, { BackgroundColor3 = c, BackgroundTransparency = shown and props.bg or 1 }, t)
+		tween(stroke, { Color = c, Transparency = shown and props.stroke or 1 }, t)
+		tween(label, { TextColor3 = fg, TextTransparency = shown and 0 or 1 }, t)
+		tween(icon, { ImageColor3 = fg, ImageTransparency = shown and 0 or 1 }, t)
+		tween(dot, { BackgroundColor3 = fg, BackgroundTransparency = shown and 0 or 1 }, t)
+	end
+	local function measure()
+		local x = 8
+		local hasText = tag.Text ~= nil and tag.Text ~= ""
+		icon.Visible = tag.Icon ~= nil
+		dot.Visible = not icon.Visible and tag.Dot and true or false
+		if icon.Visible then
+			icon.Position = UDim2.new(0, hasText and 7 or 4, 0.5, 0)
+			x = 7 + 12 + 5
+		elseif dot.Visible then
+			x = 8 + 6 + 6
+		end
+		label.Visible = hasText
+		local w = x
+		if hasText then
+			label.Text = translate(tostring(tag.Text))
+			local tw = label.TextBounds.X
+			if tw <= 0 then tw = #label.Text * 6 end
+			label.Position = UDim2.fromOffset(x, 0)
+			label.Size = UDim2.fromOffset(tw + 1, TAG_H)
+			w = x + tw + 1 + 8
+		else
+			w = TAG_H -- icon-only pill is round
+		end
+		tag.Width = math.ceil(w)
+		frame.Size = UDim2.fromOffset(tag.Width, TAG_H)
+	end
+	if tag.Icon then applyIcon(icon, resolveIcon(tag.Icon)) end
+	measure()
+	onTheme(frame, function() if not tag.Destroyed then paint(0) end end)
+
+	function tag:SetText(text) self.Text = text measure() if self.Window._layoutTopbar then self.Window._layoutTopbar() end return self end
+	function tag:SetIcon(image)
+		self.Icon = image
+		if image then applyIcon(icon, resolveIcon(image)) else icon.Image = "" end
+		measure()
+		if self.Window._layoutTopbar then self.Window._layoutTopbar() end
+		return self
+	end
+	function tag:SetColor(c) self.Color = c paint(Motion.base) return self end
+	function tag:SetStyle(style) self.Style = style paint(Motion.base) return self end
+	function tag:Set(info)
+		if typeof(info) == "string" then return self:SetText(info) end
+		info = info or {}
+		local text = prop(info, nil, "Text", "text", "Title", "title")
+		if text ~= nil then self.Text = text end
+		if info.Icon ~= nil or info.icon ~= nil then self.Icon = info.Icon or info.icon if self.Icon then applyIcon(icon, resolveIcon(self.Icon)) else icon.Image = "" end end
+		if info.Dot ~= nil then self.Dot = info.Dot end
+		if info.Style or info.style then self.Style = info.Style or info.style end
+		local c = prop(info, nil, "Color", "color", "Colour")
+		if c ~= nil then self.Color = c end
+		measure()
+		paint(Motion.base)
+		if self.Window._layoutTopbar then self.Window._layoutTopbar() end
+		return self
+	end
+	function tag:SetVisible(state)
+		self.Enabled = state and true or false
+		if self.Window._layoutTopbar then self.Window._layoutTopbar() end
+		return self
+	end
+	function tag:Destroy()
+		if self.Destroyed then return end
+		self.Destroyed = true
+		shown = false
+		paint(Motion.base)
+		for i, t in ipairs(self.Window.Tags) do if t == self then table.remove(self.Window.Tags, i) break end end
+		if self.Window._layoutTopbar then self.Window._layoutTopbar() end
+		task.delay(Motion.base + 0.02, function() ThemeHooks[frame] = nil frame:Destroy() end)
+	end
+	tag.Remove = tag.Destroy
+
+	if tag.Callback then
+		connect(frame.MouseEnter, function() tween(frame, { BackgroundTransparency = tag.Style == "Filled" and 0.15 or 0.72 }, Motion.fast) end)
+		connect(frame.MouseLeave, function() paint(Motion.base) end)
+		connect(frame.MouseButton1Click, function() safeCallback(tag.Callback, tag) end)
+	end
+
+	self.Tags[#self.Tags + 1] = tag
+	table.sort(self.Tags, function(a, b) return (a.Order or 0) < (b.Order or 0) end)
+	if self._layoutTopbar then self._layoutTopbar() end
+	-- settle in like Gen 2: a 0.25 Quint fade once placed
+	shown = true
+	paint(0.25)
+	return tag
+end
+Window.AddTag = Window.CreateTag
+Window.Tag = Window.CreateTag
 
 function Window:SetToggleKey(key)
 	self.ToggleKey = keyFromName(key)

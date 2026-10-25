@@ -88,7 +88,7 @@ While the repository is private, save `source.lua` as `mova.lua` in the executor
 
 ## Feature overview
 
-- **Window**: title/subtitle/icon, compact sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable by the top bar (mouse + touch) or the Gen 2-style drag bar under the window, bottom fade over the content so rows scroll out softly, kept on screen.
+- **Window**: title/subtitle/icon, compact sidebar tabs with icons, profile card, search that opens inside the topbar in whatever room the title and tags leave, minimise, hide (keybind or pill), resizable on desktop, draggable by the top bar (mouse + touch) or the Gen 2-style drag bar under the window, bottom fade over the content so rows scroll out softly, kept on screen.
 - **Elements**: Button, Toggle (+ attached keybind), Slider, Input (numeric / live / on-enter), Dropdown (single, multi, type-to-filter, `Refresh`), Keybind (4 modes), ColorPicker (HSV square, hue, optional alpha, hex + RGB boxes), Label (with icon), Paragraph, Divider, Section (collapsible) / Groupbox.
 - **Overlays**: Notifications (4 types, auto duration from text length or `Duration`, time-left wash, tap to dismiss, hover pauses, action buttons), Dialogs (Primary/Neutral/Danger buttons, optional `Dismissable = true` to close on tap-outside), popups close on outside click and stay inside the viewport.
 - **Themes**: Mono (default, monochrome), Dark, Light, Midnight, Ocean, Ember, Amethyst, Rose, Mocha; `Mova:RegisterTheme(name, table)`; partial tables fall back to Dark.
@@ -119,9 +119,10 @@ All option tables accept several aliases (Rayfield, Linoria/Obsidian and lower-c
 | `KeySystem` / `KeySettings` | bool \| table | — | `{ Title, Subtitle, Note, Keys = {}, KeyURL, Validate = fn(key), Link, SaveKey = true, FileName }` |
 | `Translations`, `Locale` | table, string | — | See localisation |
 | `SettingsTab` | bool | `true` | Built-in Settings tab (theme, toggle key, configs, unload) |
+| `Tags` | table | — | Topbar pills after the title, e.g. `{ { Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255,175,15) }, { Text = "Online", Dot = true, Color = "Success" } }` — see *Tags* below |
 | `Profile` | table / `false` | — | Profile card at the base of the sidebar: `{ Name, Subtitle, Image }` overrides the local player's display name / `@username` / headshot; `false` removes the card and the tab list takes its height. Clicking the card opens Settings. |
 
-**Window methods**: `CreateTab(opts | name, icon)`, `SelectTab(tab | name | index)`, `Show()`, `Hide()`, `Toggle()`, `SetVisible(bool)`, `IsVisible()`, `ToggleMinimise()`, `SetTitle()`, `SetSubtitle()`, `SetProfile{ Name, Subtitle, Image }`, `SetProfileVisible(bool)`, `SetToggleKey(key)`, `ChangeTheme(name | table)`, `Notify(opts)`, `Dialog(opts)`, `Toast(text)`, `Get(flag)`, `Set(flag, value, silent)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`, `SetAutoload(name | nil)`, `Destroy()`.
+**Window methods**: `CreateTab(opts | name, icon)`, `SelectTab(tab | name | index)`, `Show()`, `Hide()`, `Toggle()`, `SetVisible(bool)`, `IsVisible()`, `ToggleMinimise()`, `SetTitle()`, `SetSubtitle()`, `SetProfile{ Name, Subtitle, Image }`, `SetProfileVisible(bool)`, `CreateTag(opts)`, `SetToggleKey(key)`, `ChangeTheme(name | table)`, `Notify(opts)`, `Dialog(opts)`, `Toast(text)`, `Get(flag)`, `Set(flag, value, silent)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`, `SetAutoload(name | nil)`, `Destroy()`.
 Aliases: `AddTab`, `Navigate`, `ToggleHide`, `SetVisibility`, `ToggleMinimize`, `Minimize`, `ModifyTheme`, `SetTheme`, `Popup`, `Unload`, `Save`, `Load`.
 
 ### `Window:CreateTab({ Name, Icon, Order }) → Tab`
@@ -190,6 +191,15 @@ Theme keys: `Background, Sidebar, Surface, SurfaceHover, Stroke, Accent, AccentH
 | `StrokeTransparency` | `0.45` | Resting transparency of element outlines (hover sharpens them). |
 
 Any `TextLabel/TextButton/TextBox` created through `Mova.New` accepts `Weight = "Regular" | "Medium" | "SemiBold" | "Bold"`; the weight re-resolves automatically when the theme's `FontFamily` changes.
+
+### Tags
+
+Rayfield Gen 2's topbar tags, with more options. `Window:CreateTag{ Text, Icon | Dot = true, Color, Style, Callback, Order }` returns a handle with `Set{...}`, `SetText`, `SetIcon`, `SetColor`, `SetStyle`, `SetVisible`, `Destroy`.
+
+- `Style = "Soft"` (default) is a tinted pill with coloured text and a hairline, so it sits on every theme; `"Filled"` is Gen 2's solid pill with contrast text.
+- `Color` is a `Color3` **or a theme key** (`"Accent"`, `"Success"`, `"Warning"`, `"Error"` …) that follows theme changes.
+- A `Callback` makes the tag clickable (hover wash).
+- Tags live in the topbar row `[icon][title][tags]…[search][buttons]`, which is laid out by hand: the title keeps its natural width (up to half the row), tags that don't fit hide from the end, and when the **search** opens it takes the free room *inside the topbar* — tags step aside first, then the title truncates down to 64 px, so the field always gets at least 150 px and nothing overlaps. Everything re-flows on resize.
 
 ### Configs
 

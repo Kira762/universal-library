@@ -64,6 +64,10 @@ local Window = Mova:CreateWindow({
 	Theme = "Mono",
 	ToggleUIKeybind = "RightShift",
 	ConfigurationSaving = { Enabled = true, FolderName = "MovaTest" },
+	Tags = {                           -- topbar pills next to the title (Rayfield Gen 2 style)
+		{ Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255, 175, 15) },
+		{ Text = "Online", Dot = true, Color = "Success" },
+	},
 })
 
 local Tabs = {
@@ -314,6 +318,20 @@ do
 	local ti = 1
 	T:CreateButton({ Name = "Cycle the window title", Callback = function() ti = ti % #titles + 1 Window:SetTitle(titles[ti]) end })
 	T:CreateButton({ Name = "Set the subtitle to the time", Callback = function() Window:SetSubtitle(os.date("%X")) end })
+	T:CreateDivider("Tags (topbar pills) — resize the window or open the search to watch them make room")
+	local extraTag
+	local tagRow = T:CreateRow({ Columns = 2 })
+	tagRow:CreateButton({ Name = "Add a clickable tag", Callback = function()
+		if extraTag then return end
+		extraTag = Window:CreateTag({ Text = "Discord", Icon = "message-circle", Callback = function() Window:Toast("Tag clicked") end })
+		log("tag added")
+	end })
+	tagRow:CreateButton({ Name = "Recolour 'Online'", Callback = function()
+		local t = Window.Tags[2]
+		if t then t:Set({ Text = t.Text == "Online" and "Away" or "Online", Color = t.Text == "Online" and "Warning" or "Success" }) end
+	end })
+	tagRow:CreateButton({ Name = "Hide / show 'Beta'", Callback = function() local t = Window.Tags[1] if t then t:SetVisible(not t.Enabled) end end })
+	tagRow:CreateButton({ Name = "Remove the added tag", Callback = function() if extraTag then extraTag:Destroy() extraTag = nil log("tag removed") end end })
 	T:CreateDivider("Profile card (bottom of the sidebar)")
 	local profileRow = T:CreateRow({ Columns = 2 })
 	profileRow:CreateButton({ Name = "Subtitle → Premium", Callback = function() Window:SetProfile({ Subtitle = "Premium" }) log("profile subtitle set") end })

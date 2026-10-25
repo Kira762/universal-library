@@ -397,7 +397,7 @@ def paint(img, box, clip=None):
             alpha = int(round((1 - bt) * 255))
             ld.rounded_rectangle([x0, y0, x1 - 1, y1 - 1], radius=radius, fill=bg + (alpha,))
         st = mods["stroke"]
-        if st and float(st.get("Transparency", 0) or 0) < 1 and box.w > 0:
+        if st and float(st.get("Transparency", 0) or 0) < 1 and box.w > 0 and box.h > 0:
             sc = col(st.get("Color"), (0, 0, 0))
             sa = int(round((1 - float(st.get("Transparency", 0) or 0)) * 255))
             th = float(st.get("Thickness", 1) or 1)

@@ -66,8 +66,9 @@ Vector2.zero = Vector2.new(0, 0)
 
 local UDim = class("UDim", function(s, o) return { Scale = s or 0, Offset = o or 0 } end, {})
 local UDim2, U2mt = class("UDim2", function(xs, xo, ys, yo) return { X = UDim.new(xs, xo), Y = UDim.new(ys, yo) } end, {})
-UDim2.fromOffset = function(x, y) return UDim2.new(0, x, 0, y) end
-UDim2.fromScale = function(x, y) return UDim2.new(x, 0, y, 0) end
+-- Roblox rejects nil / non-number components; so does the mock, so a missing upvalue is caught here
+UDim2.fromOffset = function(x, y) assert(type(x) == "number" and type(y) == "number", "UDim2.fromOffset expects two numbers") return UDim2.new(0, x, 0, y) end
+UDim2.fromScale = function(x, y) assert(type(x) == "number" and type(y) == "number", "UDim2.fromScale expects two numbers") return UDim2.new(x, 0, y, 0) end
 U2mt.__eq = function(a, b) return a.X.Scale == b.X.Scale and a.X.Offset == b.X.Offset and a.Y.Scale == b.Y.Scale and a.Y.Offset == b.Y.Offset end
 
 local Color3, C3mt = class("Color3", function(r, g, b) return { R = r or 0, G = g or 0, B = b or 0 } end, {
@@ -290,7 +291,7 @@ InstanceMT.__index = function(self, key)
 	if child then return child end
 	if key == "ClassName" then return rawget(self, "_class") end
 	if key == "Parent" then return nil end
-	if key == "TextBounds" then return Vector2.new(#tostring(props.Text or "") * 7, 14) end
+	if key == "TextBounds" then local ts = tonumber(props.TextSize) or 14 return Vector2.new(math.floor(#tostring(props.Text or "") * ts * 0.5 + 0.5), ts) end
 	if key == "CurrentCamera" then return nil end
 	error(tostring(key) .. " is not a valid member of " .. tostring(rawget(self, "_class")) .. " \"" .. tostring(props.Name) .. "\"", 2)
 end

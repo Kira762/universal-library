@@ -50,7 +50,8 @@ for _, name in ipairs(Mova:GetThemeNames()) do
 			if (cls == "Frame" or cls == "TextButton" or cls == "TextBox" or cls == "ImageLabel" or cls == "ScrollingFrame") and ch.BackgroundTransparency < 1 then
 				local k = key(ch.BackgroundColor3 or theme.Background)
 				local isSwatch = ch.Parent and ch.Parent.ClassName == "Frame" and ch.Size.X.Offset == -8 and ch.Size.Y.Offset == -8
-				if not palette[k] and ch.Name ~= "Glyph" and not isSwatch then
+				local isTag = ch.Name == "Tag" or (ch.Parent and ch.Parent.Name == "Tag") -- script-chosen colour; text contrast is still checked below
+				if not palette[k] and ch.Name ~= "Glyph" and not isSwatch and not isTag then
 					-- allow brighten()/derived tints: skip if close to a palette colour
 					issues[#issues + 1] = string.format("off-palette bg %s on %s '%s'", k, cls, ch.Name)
 				end
