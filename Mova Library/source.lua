@@ -278,23 +278,23 @@ local function C(r, g, b) return Color3.fromRGB(r, g, b) end
 
 Mova.Themes.Dark = {
 	Name = "Dark",
-	Background = C(17, 17, 19),
-	Sidebar = C(22, 22, 25),
-	Surface = C(28, 28, 32),
-	SurfaceHover = C(36, 36, 41),
-	Stroke = C(45, 45, 52),
+	Background = C(26, 26, 31),
+	Sidebar = C(20, 20, 24),
+	Surface = C(36, 36, 43),
+	SurfaceHover = C(45, 45, 53),
+	Stroke = C(62, 62, 72),
 	Accent = C(99, 125, 255),
 	AccentHover = C(122, 144, 255),
 	OnAccent = C(255, 255, 255),
 	Text = C(240, 240, 245),
-	TextDim = C(150, 152, 165),
-	Placeholder = C(110, 112, 125),
-	Divider = C(45, 45, 52),
+	TextDim = C(160, 162, 176),
+	Placeholder = C(120, 122, 136),
+	Divider = C(44, 44, 52),
 	Shadow = C(0, 0, 0),
-	Knob = C(200, 200, 210),
-	Track = C(50, 50, 58),
-	Field = C(22, 22, 25),
-	Scrollbar = C(70, 70, 80),
+	Knob = C(228, 228, 235),
+	Track = C(56, 56, 66),
+	Field = C(48, 48, 57),
+	Scrollbar = C(92, 92, 104),
 	Overlay = C(0, 0, 0),
 	Success = C(72, 199, 142),
 	Warning = C(255, 184, 77),
@@ -316,7 +316,7 @@ end
 Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	Name = "Light",
 	Background = C(244, 244, 247),
-	Sidebar = C(235, 235, 240),
+	Sidebar = C(236, 236, 241),
 	Surface = C(255, 255, 255),
 	SurfaceHover = C(246, 246, 250),
 	Stroke = C(218, 218, 226),
@@ -329,91 +329,97 @@ Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	Shadow = C(120, 120, 140),
 	Knob = C(255, 255, 255),
 	Track = C(205, 205, 215),
-	Field = C(240, 240, 245),
+	Field = C(246, 246, 250),
 	Scrollbar = C(180, 180, 190),
 	Overlay = C(40, 40, 50),
 })
 
 Mova.Themes.Midnight = derive(Mova.Themes.Dark, {
 	Name = "Midnight",
-	Background = C(10, 12, 20),
-	Sidebar = C(13, 16, 26),
-	Surface = C(18, 22, 35),
-	SurfaceHover = C(25, 30, 46),
-	Stroke = C(32, 38, 58),
+	Background = C(19, 23, 35),
+	Sidebar = C(14, 17, 27),
+	Surface = C(28, 34, 51),
+	SurfaceHover = C(36, 43, 64),
+	Stroke = C(52, 62, 90),
+	Divider = C(36, 43, 62),
 	Accent = C(84, 160, 255),
 	AccentHover = C(110, 178, 255),
-	Field = C(13, 16, 26),
-	Track = C(34, 40, 60),
+	Field = C(39, 47, 70),
+	Track = C(48, 57, 82),
 })
 
 Mova.Themes.Ocean = derive(Mova.Themes.Dark, {
 	Name = "Ocean",
-	Background = C(12, 24, 30),
-	Sidebar = C(15, 30, 37),
-	Surface = C(20, 40, 48),
-	SurfaceHover = C(26, 50, 60),
-	Stroke = C(32, 62, 72),
+	Background = C(19, 36, 43),
+	Sidebar = C(14, 28, 34),
+	Surface = C(27, 50, 59),
+	SurfaceHover = C(34, 62, 72),
+	Stroke = C(48, 84, 96),
+	Divider = C(34, 62, 72),
 	Accent = C(0, 190, 170),
 	AccentHover = C(30, 210, 190),
 	OnAccent = C(5, 25, 25),
-	Field = C(15, 30, 37),
-	Track = C(34, 66, 76),
+	Field = C(36, 66, 77),
+	Track = C(44, 78, 90),
 })
 
 Mova.Themes.Ember = derive(Mova.Themes.Dark, {
 	Name = "Ember",
-	Background = C(22, 15, 14),
-	Sidebar = C(28, 19, 17),
-	Surface = C(38, 26, 23),
-	SurfaceHover = C(48, 33, 29),
-	Stroke = C(62, 42, 37),
+	Background = C(34, 24, 22),
+	Sidebar = C(27, 19, 17),
+	Surface = C(46, 33, 30),
+	SurfaceHover = C(57, 41, 37),
+	Stroke = C(76, 56, 50),
+	Divider = C(56, 41, 37),
 	Accent = C(255, 112, 67),
 	AccentHover = C(255, 136, 96),
-	Field = C(28, 19, 17),
-	Track = C(66, 46, 40),
+	Field = C(60, 44, 40),
+	Track = C(70, 52, 46),
 })
 
 Mova.Themes.Amethyst = derive(Mova.Themes.Dark, {
 	Name = "Amethyst",
-	Background = C(18, 14, 26),
-	Sidebar = C(23, 18, 33),
-	Surface = C(31, 24, 44),
-	SurfaceHover = C(40, 31, 56),
-	Stroke = C(54, 42, 74),
+	Background = C(28, 22, 40),
+	Sidebar = C(22, 17, 31),
+	Surface = C(39, 31, 55),
+	SurfaceHover = C(49, 39, 69),
+	Stroke = C(68, 55, 94),
+	Divider = C(49, 39, 66),
 	Accent = C(170, 110, 255),
 	AccentHover = C(188, 138, 255),
-	Field = C(23, 18, 33),
-	Track = C(58, 46, 80),
+	Field = C(52, 42, 73),
+	Track = C(64, 52, 88),
 })
 
 Mova.Themes.Rose = derive(Mova.Themes.Dark, {
 	Name = "Rose",
-	Background = C(24, 14, 18),
-	Sidebar = C(30, 18, 23),
-	Surface = C(42, 25, 32),
-	SurfaceHover = C(54, 32, 41),
-	Stroke = C(70, 42, 54),
+	Background = C(36, 23, 29),
+	Sidebar = C(29, 18, 23),
+	Surface = C(49, 32, 40),
+	SurfaceHover = C(61, 40, 50),
+	Stroke = C(82, 56, 68),
+	Divider = C(60, 40, 50),
 	Accent = C(255, 92, 140),
 	AccentHover = C(255, 120, 160),
-	Field = C(30, 18, 23),
-	Track = C(74, 46, 58),
+	Field = C(64, 43, 53),
+	Track = C(76, 52, 64),
 })
 
 Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 	Name = "Mocha",
-	Background = C(30, 30, 46),
-	Sidebar = C(36, 36, 55),
-	Surface = C(44, 44, 66),
-	SurfaceHover = C(54, 54, 78),
-	Stroke = C(66, 66, 92),
+	Background = C(36, 36, 55),
+	Sidebar = C(30, 30, 46),
+	Surface = C(49, 50, 72),
+	SurfaceHover = C(59, 60, 86),
+	Stroke = C(76, 78, 108),
+	Divider = C(58, 60, 84),
 	Accent = C(203, 166, 247),
 	AccentHover = C(216, 185, 252),
 	OnAccent = C(30, 30, 46),
 	Text = C(205, 214, 244),
 	TextDim = C(166, 173, 200),
-	Field = C(36, 36, 55),
-	Track = C(69, 71, 90),
+	Field = C(62, 64, 90),
+	Track = C(72, 74, 100),
 })
 
 local ThemeOrder = { "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", "Rose", "Mocha" }
@@ -805,11 +811,11 @@ local function Glyph(kind, parent, colorKey, size, thickness)
 			line(len, -45, -off, off * 0.5)
 			line(len, 45, off, off * 0.5)
 		elseif kind == "chevron-right" then
-			line(len, 45, off * 0.5, -off * 0.5)   -- "\" on top, "/" below -> ">"
-			line(len, -45, off * 0.5, off * 0.5)
+			line(len, 45, off * 0.5, -off)   -- "\" on top, "/" below -> ">"
+			line(len, -45, off * 0.5, off)
 		else
-			line(len, -45, -off * 0.5, -off * 0.5) -- "/" on top, "\" below -> "<"
-			line(len, 45, -off * 0.5, off * 0.5)
+			line(len, -45, -off * 0.5, -off) -- "/" on top, "\" below -> "<"
+			line(len, 45, -off * 0.5, off)
 		end
 	elseif kind == "check" then
 		line(size * 0.3, 45, -size * 0.2, size * 0.08)
@@ -1131,7 +1137,7 @@ local function makeDraggable(frame, handle, options)
 			y = clamp(y, size.Y * ay, math.max(size.Y * ay, vp.Y - size.Y * (1 - ay)))
 		end
 		frame.Position = UDim2.fromOffset(x, y)
-		if options.onDrag then options.onDrag(frame.Position) end
+		if options.onDrag then options.onDrag(frame.Position, delta) end
 	end
 	conns[#conns + 1] = connect(handle.InputBegan, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1735,41 +1741,40 @@ function Container:CreateToggle(props)
 	local el = buildCard(self, props, "Toggle", 44)
 	el.Value = prop(props, false, "CurrentValue", "Default", "Value", "default", "value", "Enabled") and true or false
 
+	-- Rayfield Gen 2 switch: the track is a quiet inset that never changes colour; the knob is a wide
+	-- pill that is translucent when off and becomes the accent (with a lighter accent rim) when on.
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", Size = UDim2.fromOffset(42, 22), AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundColor3 = "Track", BackgroundTransparency = 0.35, Size = UDim2.fromOffset(46, 22), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
 	Corner(11, track)
-	local trackStroke = Stroke(track, "Stroke", 1, 0.6)
+	local trackStroke = Stroke(track, "Stroke", 1, 0.5)
 	local knob = New("Frame", {
-		BackgroundColor3 = "Knob", Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundColor3 = "Knob", BackgroundTransparency = 0.45, Size = UDim2.fromOffset(22, 15), AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
 	})
 	Corner(8, knob)
-	local glow = nil -- (an accent UIShadow halo was tried here; it reads as a blue outline, so it is off)
+	local knobStroke = Stroke(knob, "Text", 1, 0.7)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 
+	local KNOB_ON, KNOB_OFF = UDim2.new(1, -25, 0.5, 0), UDim2.new(0, 3, 0.5, 0)
 	local function render(animate)
-		local t = animate and Motion.base or 0
+		local t = animate and 0.45 or 0
 		if el.Value then
-			tween(track, { BackgroundColor3 = themeValue("Accent") }, t)
-			tween(trackStroke, { Transparency = 1 }, t)
-			tween(knob, { Position = UDim2.new(1, -19, 0.5, 0), BackgroundColor3 = themeValue("OnAccent") }, animate and 0.32 or 0, Motion.Back, Motion.Out)
-			if glow then tween(glow, { Transparency = 0.45 }, t) end
+			tween(knob, { Position = KNOB_ON, BackgroundColor3 = themeValue("Accent"), BackgroundTransparency = 0 }, t, Motion.Expo, Motion.Out)
+			tween(knobStroke, { Color = themeValue("AccentHover"), Transparency = 0 }, t, Motion.Expo, Motion.Out)
 		else
-			tween(track, { BackgroundColor3 = themeValue("Track") }, t)
-			tween(trackStroke, { Transparency = 0.6 }, t)
-			tween(knob, { Position = UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = themeValue("Knob") }, animate and 0.32 or 0, Motion.Back, Motion.Out)
-			if glow then tween(glow, { Transparency = 1 }, t) end
+			tween(knob, { Position = KNOB_OFF, BackgroundColor3 = themeValue("Knob"), BackgroundTransparency = 0.45 }, t, Motion.Expo, Motion.Out)
+			tween(knobStroke, { Color = themeValue("Text"), Transparency = 0.7 }, t, Motion.Expo, Motion.Out)
 		end
 		if animate then
-			-- iOS style squash while the knob travels
-			tween(knob, { Size = UDim2.fromOffset(20, 16) }, 0.1)
-			task.delay(0.1, function() tween(knob, { Size = UDim2.fromOffset(16, 16) }, 0.25, Motion.Back, Motion.Out) end)
+			-- stretch while travelling, settle with a small overshoot
+			tween(knob, { Size = UDim2.fromOffset(26, 15) }, 0.1, Motion.Quint, Motion.Out)
+			task.delay(0.1, function() tween(knob, { Size = UDim2.fromOffset(22, 15) }, 0.3, Motion.Back, Motion.Out) end)
 		end
 		-- keep registry in sync so theme swaps land on the right colour
-		ThemeRegistry[track] = { BackgroundColor3 = el.Value and "Accent" or "Track" }
-		ThemeRegistry[knob] = { BackgroundColor3 = el.Value and "OnAccent" or "Knob" }
+		ThemeRegistry[knob] = { BackgroundColor3 = el.Value and "Accent" or "Knob" }
+		ThemeRegistry[knobStroke] = { Color = el.Value and "AccentHover" or "Text" }
 	end
 
 	function el:Set(value, silent)
@@ -3055,10 +3060,6 @@ function Mova:CreateWindow(props)
 	Padding(tabList, 10, 10, 10, 10)
 	List(tabList, 3)
 	self.TabList = tabList
-	-- single accent indicator that glides between tabs (Fluent-style selector)
-	local tabIndicator = New("Frame", { Name = "Indicator", BackgroundColor3 = "Accent", Size = UDim2.fromOffset(3, 0), Position = UDim2.fromOffset(3, 0), ZIndex = 3, Visible = false, Parent = sidebar })
-	Corner(2, tabIndicator)
-	self.TabIndicator = tabIndicator
 
 	-- player chip at the bottom of the sidebar
 	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
@@ -3123,7 +3124,7 @@ function Mova:CreateWindow(props)
 	hoverFx(pill, pillHover, nil, { strength = 0.95 })
 	self.Pill = pill
 	local pillMoved = false
-	makeDraggable(pill, pill, { onDrag = function() pillMoved = true end })
+	makeDraggable(pill, pill, { onDrag = function(_, delta) if delta.Magnitude > 8 then pillMoved = true end end })
 	connect(pill.InputBegan, function() pillMoved = false end)
 	connect(pill.MouseButton1Click, function()
 		if not pillMoved then self:Show() end
@@ -3345,34 +3346,20 @@ function Window:SelectTab(target)
 		downwards = (target.Button.LayoutOrder or 0) >= (previous.Button.LayoutOrder or 0)
 		tween(previous.Button, { BackgroundTransparency = 1 }, Motion.base)
 		tween(previous.Label, { TextColor3 = themeValue("TextDim") }, Motion.base)
+		setFont(previous.Label, "Medium")
 		if previous.Icon then tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.base) end
-		ThemeRegistry[previous.Label] = { TextColor3 = "TextDim" }
+		ThemeRegistry[previous.Label] = { TextColor3 = "TextDim", FontFace = "@Medium" }
 	end
 	-- sidebar: selected pill + gliding indicator
 	tween(target.Hover, { BackgroundTransparency = 1 }, Motion.fast)
 	tween(target.Button, { BackgroundTransparency = 0 }, Motion.base)
 	tween(target.Label, { TextColor3 = themeValue("Text") }, Motion.base)
-	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Text") }, Motion.base) end
-	ThemeRegistry[target.Label] = { TextColor3 = "Text" }
-	local indicator = self.TabIndicator
-	if indicator then
-		local function place()
-			local y = target.Button.AbsolutePosition.Y - self.Sidebar.AbsolutePosition.Y
-			local targetPos = UDim2.fromOffset(3, y + 9)
-			if not indicator.Visible then
-				indicator.Visible = true
-				indicator.Position = targetPos
-				indicator.Size = UDim2.fromOffset(3, 0)
-				tween(indicator, { Size = UDim2.fromOffset(3, 18) }, 0.35, Motion.Back, Motion.Out)
-			else
-				tween(indicator, { Position = targetPos }, 0.35, Motion.Expo, Motion.InOut)
-				tween(indicator, { Size = UDim2.fromOffset(3, 24) }, 0.15, Motion.Quint, Motion.Out)
-				task.delay(0.15, function() if token == self._tabToken then tween(indicator, { Size = UDim2.fromOffset(3, 18) }, 0.3, Motion.Back, Motion.Out) end end)
-			end
-		end
-		place()
-		task.defer(function() if token == self._tabToken and not self.Destroyed then place() end end)
-	end
+	setFont(target.Label, "SemiBold")
+	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Accent") }, Motion.base) end
+	ThemeRegistry[target.Label] = { TextColor3 = "Text", FontFace = "@SemiBold" }
+	-- selected pill nudges right a touch so the change is felt, not just seen
+	target.Button.Position = UDim2.fromOffset(-4, 0)
+	tween(target.Button, { Position = UDim2.fromOffset(0, 0) }, 0.35, Motion.Expo, Motion.Out)
 	-- content: previous page slides away and fades, new one slides in (Fluent-style)
 	local offset = downwards and 18 or -18
 	if previous then
