@@ -133,6 +133,7 @@ Every constructor accepts a table; `Name`/`Title`/`Text` is the label, `Descript
 | `CreateDivider("text")` | — | | |
 | `CreateProgress{ Value, Max = 100, Suffix = "%" }` | number | | `Set(n)` |
 | `CreateSection{ Name, Collapsed }` | — | Returns a container with all constructors | `SetCollapsed(bool)` |
+| `CreateGroup{ Direction = "row"\|"column", Columns = 2, Gap = 6 }` | — | Rayfield Gen 2 layout container: a row packs children side by side (wrapping past `Columns`), a column stacks them; nest a row of columns for a grid. Aliases `CreateRow` / `CreateColumn` | `SetVisible(bool)`, `Destroy()` |
 
 **Common handle API** (every element): `.Value`, `.Flag`, `.Type`, `.Card`, `Set(value, silent)`, `Get()`, `SetTitle(text)`, `SetDescription(text)`, `SetVisible(bool)`, `Lock(reason?)`, `Unlock()`, `IsLocked()`, `SetOrder(n)`, `OnChanged(fn)`, `Destroy()`.
 

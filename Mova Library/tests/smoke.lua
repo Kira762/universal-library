@@ -109,6 +109,48 @@ test("Toggle + flags + attached keybind", function()
 	eq(log[#log], "changed:false")
 end)
 
+test("Group (Gen 2 layout container)", function()
+	local row = Combat:CreateGroup({ Direction = "row", Columns = 2 })
+	local a = row:CreateToggle({ Name = "Row A", Default = true })
+	local b = row:CreateButton({ Name = "Row B", Callback = function() end })
+	eq(a.Card.Parent, row.Frame, "children parent into the group frame")
+	eq(a.Card.Size.X.Scale, 0.5, "two columns share the width")
+	eq(b.Card.Size.X.Scale, 0.5)
+	local col = Combat:CreateGroup("column")
+	local c = col:CreateSlider({ Name = "Col slider", Range = { 0, 1 }, Default = 0.5 })
+	eq(c.Card.Size.X.Scale, 1, "column children stay full width")
+	local grid = Combat:CreateRow({ Columns = 2 })
+	local left = grid:CreateColumn()
+	eq(left.Frame.Size.X.Scale, 0.5, "a column nested in a row shares its width")
+	local d = left:CreateToggle({ Name = "Grid toggle", Flag = "GridToggle", Default = true })
+	truthy(Mova.Flags.GridToggle == true, "flags register through nested groups")
+	Window:_applySearch("row a")
+	eq(a.Card.Size.X.Scale, 1, "compact card goes full width on the search page")
+	Window:_applySearch("")
+	eq(a.Card.Size.X.Scale, 0.5, "and gets its column width back")
+	row:Destroy() col:Destroy() grid:Destroy()
+end)
+
+test("Theme bindings survive without strong references", function()
+	collectgarbage() collectgarbage()
+	Mova:SetTheme("Light", false)
+	local stale = {}
+	local function walk(o)
+		for _, ch in ipairs(o:GetChildren()) do
+			if ch.ClassName == "Frame" and ch.Name ~= "Hover" and ch.Name ~= "Glyph" and ch.BackgroundTransparency < 1 then
+				local c = ch.BackgroundColor3
+				if c == Mova.Themes.Mono.Background or c == Mova.Themes.Mono.Field or c == Mova.Themes.Mono.Surface or c == Mova.Themes.Mono.Sidebar then
+					stale[#stale + 1] = ch:GetFullName()
+				end
+			end
+			walk(ch)
+		end
+	end
+	walk(Window.Main)
+	eq(#stale, 0, "frames still in Mono colours after switching to Light: " .. table.concat(stale, ", "))
+	Mova:SetTheme("Midnight", false)
+end)
+
 test("Card base is white under its surface gradient", function()
 	local t = Combat:CreateToggle({ Name = "Gradient check", Default = false })
 	eq(t.Card.BackgroundColor3, Color3.new(1, 1, 1), "card background must be white (UIGradient multiplies it)")

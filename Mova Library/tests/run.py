@@ -44,6 +44,13 @@ def run(modname: str) -> int:
         except Exception as exc:  # noqa: BLE001
             print("example_check FAILED:", exc)
             status["code"] = 1
+    if status["code"] == 0:
+        rt3 = lua.LuaRuntime(unpack_returned_tuples=True)
+        try:
+            rt3.execute("local chunk = assert(loadfile('tests/theme_audit.lua')) chunk('tests/roblox_mock.lua')")
+        except Exception as exc:  # noqa: BLE001
+            print("theme_audit FAILED:", exc)
+            status["code"] = 1
     return status["code"]
 
 

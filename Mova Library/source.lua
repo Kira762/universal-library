@@ -351,8 +351,8 @@ Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	Accent = C(70, 100, 240),
 	AccentHover = C(90, 118, 250),
 	Text = C(25, 25, 30),
-	TextDim = C(105, 108, 120),
-	Placeholder = C(150, 152, 165),
+	TextDim = C(90, 93, 106),
+	Placeholder = C(140, 142, 155),
 	Divider = C(218, 218, 226),
 	Shadow = C(120, 120, 140),
 	Knob = C(255, 255, 255),
@@ -453,8 +453,19 @@ Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 local ThemeOrder = { "Mono", "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", "Rose", "Mocha" }
 
 local CurrentTheme = shallowCopy(Mova.Themes.Mono)
-local ThemeRegistry = setmetatable({}, { __mode = "k" })
-local ThemeHooks = setmetatable({}, { __mode = "k" }) -- instance -> function() run after a theme change
+-- NOT weak-keyed on purpose: in Roblox an Instance held only as a weak key is collected as soon as
+-- no strong Lua reference remains, even though the Instance is still in the tree. With weak tables
+-- every binding that wasn't also kept in a local (corner fillers, fields, the title dot...) silently
+-- dropped out and stayed in the old colours after SetTheme. Entries are pruned instead when the
+-- instance has left the tree (Destroy() sets Parent = nil).
+local ThemeRegistry = {}
+local ThemeHooks = {} -- instance -> function() run after a theme change
+local function pruneRegistry(t)
+	for obj in pairs(t) do
+		local ok, parent = pcall(function() return obj.Parent end)
+		if not ok or parent == nil then t[obj] = nil end
+	end
+end
 
 local function onTheme(instance, fn)
 	ThemeHooks[instance] = fn
@@ -562,6 +573,8 @@ function Mova:SetTheme(theme, animate)
 	end
 	CurrentTheme = shallowCopy(resolved)
 	if animate == nil then animate = true end
+	pruneRegistry(ThemeRegistry)
+	pruneRegistry(ThemeHooks)
 	for obj, map in pairs(ThemeRegistry) do
 		applyThemeToObject(obj, map, animate)
 	end
@@ -946,7 +959,7 @@ end
 
 local Translations = {}
 local CurrentLocale = "en"
-local LangRegistry = setmetatable({}, { __mode = "k" })
+local LangRegistry = {} -- strong for the same reason as ThemeRegistry; pruned on SetLocale
 
 local function translate(text)
 	if typeof(text) ~= "string" then return text end
@@ -966,6 +979,7 @@ end
 
 function Mova:SetLocale(locale)
 	CurrentLocale = locale or "en"
+	pruneRegistry(LangRegistry)
 	for obj, source in pairs(LangRegistry) do
 		pcall(function() obj.Text = translate(source) end)
 	end
@@ -2853,6 +2867,76 @@ function Container:CreateSection(props)
 end
 Container.CreateGroupbox = Container.CreateSection
 
+-- Group: Rayfield Gen 2's layout container. A row packs its children side by side (Columns per
+-- row, wrapping when there are more), a column stacks them. Nest a row of columns for a grid.
+-- Every Create*/Add* method of a container works on a group, so the same element code builds
+-- inside it and flags still register on the window.
+local Group = setmetatable({}, { __index = function(_, k)
+	local v = Container[k]
+	if typeof(v) == "function" and (k:match("^Create") or k:match("^Add")) then
+		return function(self, ...)
+			local el = v(self, ...)
+			self:_fit(el)
+			return el
+		end
+	end
+	return v
+end })
+Group.__index = Group
+
+function Group:_fit(el)
+	if typeof(el) ~= "table" then return end
+	local f = el.Card or el.Frame
+	if not f then return end
+	if self.Direction == Enum.FillDirection.Horizontal then
+		local cols = math.max(1, self.Columns)
+		local gap = self.Gap
+		local size = UDim2.new(1 / cols, -math.ceil(gap * (cols - 1) / cols), f.Size.Y.Scale, f.Size.Y.Offset)
+		f.Size = size
+		el._compactSize = size
+	end
+end
+
+function Group:SetVisible(state) self.Frame.Visible = state and true or false return self end
+function Group:Destroy()
+	for i = #self.Elements, 1, -1 do pcall(function() self.Elements[i]:Destroy() end) end
+	self.Frame:Destroy()
+end
+
+function Container:CreateGroup(props)
+	if typeof(props) == "string" then props = { Direction = props } end
+	props = props or {}
+	local dir = tostring(prop(props, "row", "Direction", "direction")):lower()
+	local horizontal = not (dir == "column" or dir == "vertical")
+	local columns = tonumber(prop(props, 2, "Columns", "columns")) or 2
+	local gap = tonumber(prop(props, 6, "Gap", "gap", "Padding")) or 6
+
+	local frame = New("Frame", {
+		Name = "Group", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = self:_nextOrder(), Parent = self.Holder,
+	})
+	local layout = List(frame, gap, horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+		Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
+	if horizontal then
+		-- more children than Columns flow onto the next line; flex absorbs the rounding gap
+		pcall(function() layout.Wraps = true end)
+		pcall(function() layout.HorizontalFlex = Enum.UIFlexAlignment.Fill end)
+	end
+
+	local group = setmetatable({
+		Type = "Group", Frame = frame, Holder = frame, Layout = layout,
+		Direction = horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+		Columns = columns, Gap = gap,
+		Window = self.Window, Tab = self.Tab or self, Elements = {}, _order = 0,
+	}, Group)
+	self.Elements[#self.Elements + 1] = group
+	-- a column nested in a row shares the row's width like any other child
+	if getmetatable(self) == Group then self:_fit(group) end
+	return group
+end
+Container.CreateRow = function(self, props) props = props or {} props.Direction = "row" return self:CreateGroup(props) end
+Container.CreateColumn = function(self, props) props = props or {} props.Direction = "column" return self:CreateGroup(props) end
+
 -- Linoria / Obsidian compatibility aliases -----------------------------------------------------
 
 local function linoriaInfo(idx, info)
@@ -3471,6 +3555,7 @@ function Window:_applySearch(query)
 				if el._searchHome then
 					el.Card.Parent = el._searchHome
 					el.Card.LayoutOrder = el._searchOrder or el.Card.LayoutOrder
+					if el._compactSize then el.Card.Size = el._compactSize end
 					el._searchHome = nil
 					el._searchHidden = nil
 					el.Card.Visible = el.Visible ~= false
@@ -3497,11 +3582,13 @@ function Window:_applySearch(query)
 				end
 				el.Card.Parent = page
 				el.Card.LayoutOrder = i
+				if el._compactSize then el.Card.Size = UDim2.new(1, 0, el._compactSize.Y.Scale, el._compactSize.Y.Offset) end
 				el.Card.Visible = true
 				count = count + 1
 			elseif el._searchHome then
 				el.Card.Parent = el._searchHome
 				el.Card.LayoutOrder = el._searchOrder or el.Card.LayoutOrder
+				if el._compactSize then el.Card.Size = el._compactSize end
 				el._searchHome = nil
 			end
 		end
