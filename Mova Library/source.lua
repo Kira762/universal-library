@@ -2269,25 +2269,24 @@ end
 
 function Container:CreateButton(props, callback)
 	if typeof(props) == "string" then props = { Name = props, Callback = callback } end
-	local el = buildCard(self, props, "Button", 24, true) -- a chevron never needs its own row
+	-- Rayfield Gen 2 button: the whole card is the control and nothing decorates its right side.
+	-- Pressing ghosts the outline and squeezes the card in from both sides around the callback,
+	-- then both spring back - that motion is the feedback, not an arrow.
+	local el = buildCard(self, props, "Button", 0, true)
 	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
-	local arrowHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0, 20, 1, 0), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = el.Control })
-	local arrow = Glyph("chevron-right", arrowHolder, "TextDim", 14, 1.6)
-	connect(interact.MouseEnter, function()
-		if el.Locked then return end
-		tween(arrow, { Position = UDim2.new(0.5, 3, 0.5, 0) }, Motion.base, Motion.Back, Motion.Out)
-		tintGlyph(arrow, themeValue("Text"))
-	end)
-	connect(interact.MouseLeave, function()
-		tween(arrow, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Motion.slow, Motion.Quint, Motion.Out)
-		tintGlyph(arrow, themeValue("TextDim"), Motion.slow)
-	end)
-	connect(interact.MouseButton1Click, function()
-		if el.Locked then return end
+	local function press()
 		flash(el.Hover)
 		pressFx(el.Card)
-		tintGlyph(arrow, themeValue("Accent"), 0.05)
-		task.delay(0.25, function() tintGlyph(arrow, themeValue("TextDim"), Motion.slow) end)
+		tween(el.Stroke, { Transparency = 1 }, 0.25, Motion.Quint, Motion.Out)
+		task.delay(0.11, function()
+			if el.Card.Parent and not el.Locked then
+				tween(el.Stroke, { Transparency = CurrentTheme.StrokeTransparency or 0.45 }, 0.25, Motion.Quint, Motion.Out)
+			end
+		end)
+	end
+	connect(interact.MouseButton1Click, function()
+		if el.Locked then return end
+		press()
 		safeCallback(el.Callback, el)
 	end)
 	function el:Press() if not self.Locked then safeCallback(self.Callback, self) end end

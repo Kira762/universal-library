@@ -91,7 +91,7 @@ do
 	-- Buttons -------------------------------------------------------------------------------
 	T:CreateDivider("Buttons")
 	T:CreateButton({ Name = "Button", Callback = function() log("button pressed") end })
-	T:CreateButton({ Name = "With description", Description = "Chevron slides on hover, flashes on click.", Callback = function() log("described button pressed") end })
+	T:CreateButton({ Name = "With description", Description = "Press: outline ghosts, card squeezes and springs back.", Callback = function() log("described button pressed") end })
 	T:CreateButton({ Name = "With icon", Icon = "rocket", Callback = function() log("icon button pressed") end })
 
 	-- Toggles -------------------------------------------------------------------------------
