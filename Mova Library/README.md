@@ -51,7 +51,7 @@ Every visual decision below was taken after reading the presentation code of the
 | Real font weights (`Regular / Medium / SemiBold / Bold`) through `Font.new(family, weight)` instead of `Enum.Font` pairs; 14 px Medium titles, 12 px dim descriptions | WindUI `Creator.Font` + `FontWeight`, Gen 2 / Aetheris `Font.new(id, weight)` |
 | Cards: surface + 1 px outline at 45 % transparency, hover = white wash (`BackgroundTransparency 0.95`) and the outline sharpens, 0.22 s Quint Out; press = card shrinks 8 px symmetrically and springs back with Exponential Out | Gen 2 `hover()` / `press()` (stroke + overlay tween, width bounce) |
 | Toggle: 44×20 neutral track that never changes colour, 20×14 pill knob (translucent off, accent with a lighter rim on), one 0.6 s Exponential Out slide — no stretch or overshoot | Gen 2 switch geometry (50×21 / 25×17, trimmed), Fluent 36×18 proportions |
-| Slider: gradient fill, knob grows idle → hover → drag with a glow, value pill gets an accent outline while dragging | Gen 2 slider fill gradient + knob states |
+| Slider: Gen 2's wide layout — title over a dim value readout (click it to type), a fixed 200 px track on the right with a gradient fill and a 30×18 pill handle that grows and ghosts while held; narrow cards shrink the track first, then drop it under the title with the readout beside it | Gen 2 `slider.luau` wide / narrow layouts, fill gradient, handle states |
 | Dropdown / colour popups grow out of the field (0.3 s Exponential Out) and shrink back; chevron rotates with Back Out; selected rows show a drawn check | Fluent dropdown, Obsidian popup sizing |
 | Sidebar: compact 32 px rows, the selected tab fills with a soft surface and its label brightens, tabs slide in staggered during the intro; a Gen 2-style drag bar hangs under the window and the content fades out at its base | Gen 2 tab-selector stagger, `drag.luau` bar, `bottomFade` |
 | Page switch: old page slides out, new page slides in from the direction of travel (0.4 s Exponential Out) | Fluent `SelectTab` container swap |
@@ -243,6 +243,7 @@ cd "Mova Library"
 python3 tests/run.py          # Lua 5.4
 python3 tests/run.py --all    # Lua 5.1, LuaJIT and 5.4
 python3 tests/variants.py     # secure / mobile / Studio variants
+python3 tests/render.py scene.lua out.png   # rough PIL render of a scene (pip install pillow) to eyeball layout
 ```
 
 `tests/roblox_mock.lua` is a small headless model of Roblox (instances, signals, services, datatypes, a virtual file system, `task`) that is strict about things real Roblox rejects — e.g. custom fields on Instances or wrong property types. `tests/smoke.lua` drives every public API, `tests/example_check.lua` runs `example.lua` so the docs can't drift from the code, `tests/theme_audit.lua` checks contrast for every theme and `tests/secure_check.lua` runs the secure-mode icon cache. It is not a renderer; always do a final check in an executor or Studio.

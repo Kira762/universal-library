@@ -1958,7 +1958,7 @@ function Element:_fireChanged()
 end
 
 -- Builds the standard card (title + description on the left, control on the right).
-local function buildCard(container, props, kind, controlWidth, noStack)
+local function buildCard(container, props, kind, controlWidth, noStack, minControlWidth)
 	local name = prop(props, kind, "Name", "name", "Title", "title", "Text")
 	local desc = prop(props, nil, "Description", "description", "Desc", "Info")
 	local icon = prop(props, nil, "Icon", "icon")
@@ -2044,6 +2044,7 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 		Control = control,
 		Stacked = false,
 		NoStack = noStack and true or false,
+		MinControlWidth = minControlWidth, -- a control that can give up width before it has to stack
 		Blocker = blocker,
 		Stroke = stroke,
 		Hover = overlay,
@@ -2070,10 +2071,21 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 			if scale > 0 then w = w / scale end
 			local room = w - leftPad - 14 - 8 - cw
 			local bounds = title.TextBounds
-			local need = clamp((bounds and bounds.X or 60) + 6, 44, 110)
+			local need = clamp((bounds and bounds.X or 60) + 10, 56, 110)
 			local want = room < need
-			if want == element.Stacked then return end
-			element.Stacked = want
+			-- fields and tracks shrink towards their minimum before the card gives up and stacks,
+			-- so the cards of a two-column group keep one height for as long as possible
+			local shrunk = nil
+			if want and element.MinControlWidth then
+				local avail = math.floor(w - leftPad - 14 - 8 - need)
+				if avail >= element.MinControlWidth then
+					want = false
+					shrunk = math.min(avail, cw)
+				end
+			end
+			if want == element.Stacked and shrunk == element._shrunk then return end
+			element.Stacked, element._shrunk = want, shrunk
+			if element._onStack then element._onStack(want) end
 			if want then
 				textHolder.Size = UDim2.new(1, -leftPad - 14, 0, 0)
 				textPad.PaddingBottom = UDim.new(0, 13 + 28 + 10)
@@ -2081,11 +2093,12 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 				control.Position = UDim2.new(1, -14, 1, -12)
 				control.Size = UDim2.new(1, -leftPad - 14, 0, 28)
 			else
-				textHolder.Size = restingText
+				local width = shrunk or cw
+				textHolder.Size = shrunk and UDim2.new(1, -leftPad - width - 14 - 8, 0, 0) or restingText
 				textPad.PaddingBottom = UDim.new(0, 13)
 				control.AnchorPoint = Vector2.new(1, 0)
 				control.Position = UDim2.new(1, -14, 0, 0)
-				control.Size = UDim2.new(0, cw, 1, 0)
+				control.Size = UDim2.new(0, width, 1, 0)
 			end
 		end
 		connect(card:GetPropertyChangedSignal("AbsoluteSize"), applyLayout)
@@ -2256,45 +2269,73 @@ function Container:CreateSlider(props)
 		if increment < 1 and decimals == 0 then decimals = 2 end
 	end
 
-	-- the value box is sized for the longest value it can show, so "100%" and "1000 studs" both fit
-	local longest = math.max(#(prefix .. formatNumber(max, decimals) .. suffix), #(prefix .. formatNumber(min, decimals) .. suffix))
-	local boxWidth = clamp(longest * 7 + 18, 56, 120)
-
-	local el = buildCard(self, props, "Slider", boxWidth, true) -- the slider has its own two-row layout
+	-- Gen 2's wide slider: title stacked over a dim value readout on the left, a fixed-width track
+	-- on the right, all on one 58px card. On a narrow card (phone, grouped column) buildCard drops
+	-- the track under the text and the readout jumps up beside the title so the card stays short.
+	local trackWidth = IsMobile and 150 or 200
+	local el = buildCard(self, props, "Slider", trackWidth, false, 110)
 	el.Min, el.Max, el.Increment, el.Decimals = min, max, increment, decimals
 	el.Suffix, el.Prefix = suffix, prefix
 	el.Value = clamp(prop(props, min, "CurrentValue", "Default", "Value", "default", "value"), min, max)
+	el.SizeConstraint.MinSize = Vector2.new(0, 56)
+	el.TextPadding.PaddingTop = UDim.new(0, 11)
+	el.TextPadding.PaddingBottom = UDim.new(0, 11)
 
-	-- Layout (Gen 2's narrow slider): title + value box share the top row, the track gets a full
-	-- row of its own underneath. The text block reserves the track row in its bottom padding, so a
-	-- description pushes the track down instead of running into it.
-	el.Card.Size = UDim2.new(1, 0, 0, 76)
-	el.SizeConstraint.MinSize = Vector2.new(0, 76)
-	el.TextPadding.PaddingBottom = UDim.new(0, 13 + 32)
-
+	-- value readout: looks like a dim second line, becomes a small field when clicked to type
+	local textHolder = el.TitleLabel.Parent
+	-- (a list layout owns the positions of its children, so the box sits in a host row and is
+	-- pulled 6px left inside it: its text lines up with the title, its field padding does not)
+	local valueHost = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 3, Parent = textHolder })
 	local valueBox = New("TextBox", {
-		Text = "", TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		BackgroundColor3 = "Field", BackgroundTransparency = 0,
-		Size = UDim2.new(1, 0, 0, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 10),
-		TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, ZIndex = 2, Parent = el.Control,
+		Text = "", TextSize = 12, TextColor3 = "TextDim", Weight = "SemiBold",
+		BackgroundColor3 = "Field", BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.fromOffset(-6, 0),
+		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 3, Parent = valueHost,
 	})
-	Corner(7, valueBox)
+	Corner(5, valueBox)
+	Padding(valueBox, 0, 6, 0, 6)
 	local valueStroke = Stroke(valueBox)
-	connect(valueBox.Focused, function() focusRing(valueStroke, true) end)
-	connect(valueBox.FocusLost, function() focusRing(valueStroke, false) end)
+	valueStroke.Transparency = 1
+	connect(valueBox.Focused, function()
+		tween(valueBox, { BackgroundTransparency = 0, TextColor3 = themeValue("Text") }, Motion.fast)
+		focusRing(valueStroke, true)
+	end)
+	connect(valueBox.FocusLost, function()
+		tween(valueBox, { BackgroundTransparency = 1, TextColor3 = themeValue("TextDim") }, Motion.base)
+		tween(valueStroke, { Transparency = 1 }, Motion.base)
+	end)
+	el.ValueBox = valueBox
+	-- narrow card: the readout sits at the right end of the title row instead of under it, so the
+	-- card is title row + track row and nothing more
+	el._onStack = function(stacked)
+		if stacked then
+			valueHost.Visible = false
+			valueBox.Parent = el.Card
+			valueBox.AnchorPoint = Vector2.new(1, 0)
+			valueBox.Position = UDim2.new(1, -14 + 6, 0, 11)
+			el.TitleLabel.Size = UDim2.new(1, -70, 0, 18)
+		else
+			valueBox.AnchorPoint = Vector2.new(0, 0)
+			valueBox.Position = UDim2.fromOffset(-6, 0)
+			valueBox.Parent = valueHost
+			valueHost.Visible = true
+			el.TitleLabel.Size = UDim2.new(1, 0, 0, 18)
+		end
+	end
 
-	-- Rayfield Gen 2 slider: a 14px rounded track, a gradient fill, and a wide pill handle that
-	-- rides the fill's leading edge (it lives inside the fill, so the fill carries it). While held
-	-- the pill grows a touch, ghosts to 70% and shows a thin white ring.
-	local HANDLE_REST, HANDLE_HELD = Vector2.new(35, 20), Vector2.new(41, 22)
-	-- the pill is centred on the track's ends, so the track is inset by more than half a pill: at
-	-- 0% / 100% the pill stays 4px clear of the card edge instead of sitting on the border
+	-- Rayfield Gen 2 track: 14px rounded, gradient fill, a pill handle riding the fill's leading
+	-- edge (it lives inside the fill, so the fill carries it). While held the pill grows a touch,
+	-- ghosts to 70% and shows a thin ring. Sized a step under Gen 2's 35x20 so it reads as a
+	-- handle on a 14px track rather than a block.
+	local HANDLE_REST, HANDLE_HELD = Vector2.new(30, 18), Vector2.new(34, 20)
+	-- the pill is centred on the track's ends, so the track is inset by half a pill: at 0% / 100%
+	-- the pill stays inside the control instead of hanging over the card edge
 	local trackHolder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -44, 0, 22), AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 22, 1, -11), ZIndex = 2, Parent = el.Card,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 2, Parent = el.Control,
 	})
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 14), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
+		BackgroundColor3 = "Track", Size = UDim2.new(1, -HANDLE_HELD.X, 0, 14), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = trackHolder,
 	})
 	Corner(7, track)
 	local fill = New("Frame", { BackgroundColor3 = WHITE, Size = UDim2.new(0, 0, 1, 0), ZIndex = 2, Parent = track }) -- colour comes from the gradient
@@ -2306,13 +2347,13 @@ function Container:CreateSlider(props)
 	})
 	onTheme(fillGradient, function() fillGradient.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
 	local knob = New("Frame", {
-		BackgroundColor3 = "Text", Size = UDim2.fromOffset(HANDLE_REST.X, HANDLE_REST.Y), AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = "Knob", Size = UDim2.fromOffset(HANDLE_REST.X, HANDLE_REST.Y), AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0), ZIndex = 5, Parent = fill,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
-	local knobRing = Stroke(knob, "Background", 1, 0.6)
+	local knobRing = Stroke(knob, "TextDim", 1, 0.7)
 	local knobGlow = Shadow(knob, "Text", 10, 0.85)
-	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 20, 1, 0), Position = UDim2.fromOffset(-10, 0), ZIndex = 10, Parent = trackHolder })
+	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = trackHolder })
 
 	local function snap(v)
 		v = clamp(v, min, max)
@@ -2333,8 +2374,8 @@ function Container:CreateSlider(props)
 		local held = state == "drag"
 		local size = held and HANDLE_HELD or HANDLE_REST
 		tween(knob, { Size = UDim2.fromOffset(size.X, size.Y), BackgroundTransparency = held and 0.7 or 0 }, 0.3, Motion.Expo, Motion.Out)
-		tween(knobRing, { Color = held and themeValue("Text") or themeValue("Background"), Transparency = 0.6 }, 0.3, Motion.Expo, Motion.Out)
-		ThemeRegistry[knobRing] = { Color = held and "Text" or "Background" }
+		tween(knobRing, { Color = held and themeValue("Text") or themeValue("TextDim"), Transparency = held and 0.5 or 0.7 }, 0.3, Motion.Expo, Motion.Out)
+		ThemeRegistry[knobRing] = { Color = held and "Text" or "TextDim" }
 		tween(track, { BackgroundColor3 = state == "idle" and themeValue("Track") or brighten(themeValue("Track"), 0.08) }, 0.45, Motion.Expo, Motion.Out)
 		if knobGlow then tween(knobGlow, { Transparency = held and 0.7 or 0.85 }, 0.3, Motion.Expo, Motion.Out) end
 	end
@@ -2409,7 +2450,7 @@ end
 
 function Container:CreateInput(props)
 	props = props or {}
-	local el = buildCard(self, props, "Input", IsMobile and 120 or 160)
+	local el = buildCard(self, props, "Input", IsMobile and 120 or 160, false, 90)
 	el.Value = tostring(prop(props, "", "CurrentValue", "Default", "Value", "default", "value", "Text") or "")
 	local placeholder = prop(props, "Type here...", "PlaceholderText", "Placeholder", "placeholder")
 	local numeric = prop(props, false, "Numeric", "numeric", "NumbersOnly")
@@ -2474,7 +2515,7 @@ end
 
 function Container:CreateDropdown(props)
 	props = props or {}
-	local el = buildCard(self, props, "Dropdown", IsMobile and 130 or 170)
+	local el = buildCard(self, props, "Dropdown", IsMobile and 136 or 180, false, 100)
 	el.Options = {}
 	local raw = prop(props, {}, "Options", "options", "Values", "values", "List")
 	for i, v in ipairs(raw) do el.Options[i] = v end
@@ -2591,7 +2632,7 @@ function Container:CreateDropdown(props)
 		local visible = math.min(count, maxVisible)
 		local height = visible * 30 + math.max(0, visible - 1) * 3 + 12 + (showSearch and 36 or 0)
 		if count == 0 then height = 40 + (showSearch and 36 or 0) end
-		positionPopup(listFrame, field, math.max(field.AbsoluteSize.X, 180), height)
+		positionPopup(listFrame, field, math.max(field.AbsoluteSize.X, IsMobile and 136 or 180), height) -- flush with the field unless it was shrunk
 	end
 
 	local function close()
