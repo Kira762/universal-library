@@ -63,6 +63,18 @@ All timings live in one `Motion` table (`fast 0.12`, `base 0.22`, `slow 0.4`, Qu
 
 ---
 
+## Quick test
+
+`test.lua` is a small script with **no library code inside it** — it loads `source.lua` from the branch URL (falls back to `main`, then to a local `readfile("mova.lua")`), builds one window that exercises every element, and never has to change when the library does. Run it from your executor to check the latest push:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Kira762/universal-library/arena/98807242-universal-library/Mova%20Library/test.lua"))()
+```
+
+While the repository is private, save `source.lua` as `mova.lua` in the executor workspace and paste `test.lua` directly.
+
+---
+
 ## Feature overview
 
 - **Window**: title/subtitle/icon, sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable (mouse + touch), kept on screen.

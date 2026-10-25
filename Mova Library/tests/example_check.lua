@@ -28,3 +28,19 @@ assert(w.Main.Size.X.Offset == 640 and w.Main.Size.Y.Offset == 440, "Vector2 Siz
 w:Destroy()
 print(string.format("example ok: %d instances, config=%d bytes", mock.Created(), #mock.Files["MovaExample/default.mova.json"]))
 print(mock.Files["MovaExample/default.mova.json"]:sub(1, 300) .. " ...")
+
+-- test.lua (the no-bundle quick script) must also build cleanly; HttpGet is stubbed to "404" so it
+-- falls through to readfile, which the mock serves from source.lua.
+mock.Files["mova.lua"] = io.open("source.lua"):read("*a")
+_G.loadstring = function(src) local f = assert(realLoad(src, "mova")) return function() MovaRef = f() return MovaRef end end
+local game = _G.game
+local oldHttpGet = game.HttpGet
+game.HttpGet = function() return "404: Not Found" end
+local tsrc = io.open("test.lua"):read("*a")
+assert(realLoad(tsrc, "test"))()
+for _ = 1, 10 do mock.flush() end
+game.HttpGet = oldHttpGet
+local tw = MovaRef.Windows[#MovaRef.Windows]
+assert(tw.Name == "Mova Test" and #tw.Tabs >= 3, "test.lua window built")
+tw:Destroy()
+print("test.lua ok")
