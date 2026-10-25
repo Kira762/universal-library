@@ -1249,15 +1249,7 @@ function Mova:Notify(props)
 	local cardStroke = Stroke(card)
 	cardStroke.Transparency = 1
 	Shadow(card, "Shadow", 32, 0.4)
-	Padding(card, 12, 14, 12, 18)
-
-	local bar = New("Frame", {
-		BackgroundColor3 = accentKey,
-		Size = UDim2.new(0, 3, 1, -16),
-		Position = UDim2.fromOffset(-18 + 6, 8),
-		Parent = card,
-	})
-	Corner(2, bar)
+	Padding(card, 12, 14, 12, 14)
 
 	local iconImage = resolveIcon(icon)
 	local textLeft = iconImage and 28 or 0
@@ -1276,10 +1268,18 @@ function Mova:Notify(props)
 	})
 	List(body, 3)
 	if title then
+		local titleRow = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 1, Parent = body })
+		local dotLeft = 0
+		if not iconImage then
+			-- type is shown by a small dot next to the title (no coloured bars or outlines)
+			local dot = New("Frame", { BackgroundColor3 = accentKey, Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Parent = titleRow })
+			Corner(3, dot)
+			dotLeft = 12
+		end
 		New("TextLabel", {
 			Text = tostring(title), Weight = "SemiBold", TextSize = 14, TextColor3 = "Text",
-			Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-			LayoutOrder = 1, Parent = body,
+			Size = UDim2.new(1, -dotLeft, 1, 0), Position = UDim2.fromOffset(dotLeft, 0), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = titleRow,
 		})
 	end
 	if content and content ~= "" then
@@ -1343,8 +1343,9 @@ function Mova:Notify(props)
 
 	local progress = nil
 	if duration and duration > 0 then
+		-- quiet countdown line in the text colour, not the type colour
 		progress = New("Frame", {
-			BackgroundColor3 = accentKey, BackgroundTransparency = 0.35,
+			BackgroundColor3 = "TextDim", BackgroundTransparency = 0.7,
 			Size = UDim2.new(1, 32, 0, 2), Position = UDim2.new(0, -14, 1, 12), AnchorPoint = Vector2.new(0, 1),
 			Parent = card,
 		})
