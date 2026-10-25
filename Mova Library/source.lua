@@ -1876,26 +1876,34 @@ function Container:CreateSlider(props)
 	connect(valueBox.Focused, function() tween(valueStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
 	connect(valueBox.FocusLost, function() tween(valueStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 
+	-- Rayfield Gen 2 slider: a 14px rounded track, a gradient fill, and a wide pill handle that
+	-- rides the fill's leading edge (it lives inside the fill, so the fill carries it). While held
+	-- the pill grows a touch, ghosts to 70% and shows a thin white ring.
+	local HANDLE_REST, HANDLE_HELD = Vector2.new(35, 20), Vector2.new(41, 22)
 	local trackHolder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -28, 0, 22), AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -6), ZIndex = 2, Parent = el.Card,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -36, 0, 22), AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 18, 1, -6), ZIndex = 2, Parent = el.Card,
 	})
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
+		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 14), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
 	})
-	Corner(3, track)
-	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), Parent = track })
-	Corner(3, fill)
-	local fillGradient = New("UIGradient", { Parent = fill })
+	Corner(7, track)
+	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), ZIndex = 2, Parent = track })
+	Corner(7, fill)
+	local fillGradient = New("UIGradient", {
+		Rotation = 2, Offset = Vector2.new(0, 0.5),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(1, 0) }),
+		Parent = fill,
+	})
 	onTheme(fillGradient, function() fillGradient.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
 	local knob = New("Frame", {
-		BackgroundColor3 = "OnAccent", Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 2, Parent = track,
+		BackgroundColor3 = "Text", Size = UDim2.fromOffset(HANDLE_REST.X, HANDLE_REST.Y), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0), ZIndex = 5, Parent = fill,
 	})
-	Corner(7, knob)
-	local knobRing = Stroke(knob, "Accent", 2, 0)
-	local knobGlow = Shadow(knob, "Accent", 10, 1)
-	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 14, 1, 0), Position = UDim2.fromOffset(-7, 0), ZIndex = 3, Parent = trackHolder })
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+	local knobRing = Stroke(knob, "Text", 1, 1)
+	local knobGlow = Shadow(knob, "Text", 10, 0.85)
+	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 20, 1, 0), Position = UDim2.fromOffset(-10, 0), ZIndex = 10, Parent = trackHolder })
 
 	local function snap(v)
 		v = clamp(v, min, max)
@@ -1906,16 +1914,19 @@ function Container:CreateSlider(props)
 	local dragging = false
 	local function render(animate)
 		local alpha = (max > min) and ((el.Value - min) / (max - min)) or 0
-		local t = (not animate) and 0 or (dragging and 0.05 or Motion.base)
-		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, t, dragging and Enum.EasingStyle.Linear or Motion.Quint)
-		tween(knob, { Position = UDim2.new(alpha, 0, 0.5, 0) }, t, dragging and Enum.EasingStyle.Linear or Motion.Quint)
+		-- the fill carries the pill, so one tween moves both: 0.3 Quint while following the pointer,
+		-- 0.45 Expo when a value is set programmatically (Gen 2's followInfo / tweenInfo)
+		local t = (not animate) and 0 or (dragging and 0.3 or 0.45)
+		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, t, dragging and Motion.Quint or Motion.Expo, Motion.Out)
 		valueBox.Text = prefix .. formatNumber(el.Value, decimals) .. suffix
 	end
 	local function setKnobState(state) -- "idle" | "hover" | "drag"
-		local size = state == "drag" and 18 or state == "hover" and 16 or 14
-		tween(knob, { Size = UDim2.fromOffset(size, size) }, Motion.base, Motion.Back, Motion.Out)
-		tween(track, { Size = UDim2.new(1, 0, 0, state == "idle" and 6 or 8) }, Motion.base)
-		if knobGlow then tween(knobGlow, { Transparency = state == "drag" and 0.4 or 1 }, Motion.base) end
+		local held = state == "drag"
+		local size = held and HANDLE_HELD or HANDLE_REST
+		tween(knob, { Size = UDim2.fromOffset(size.X, size.Y), BackgroundTransparency = held and 0.7 or 0 }, 0.3, Motion.Expo, Motion.Out)
+		tween(knobRing, { Transparency = held and 0.6 or 1 }, 0.3, Motion.Expo, Motion.Out)
+		tween(track, { BackgroundColor3 = state == "idle" and themeValue("Track") or brighten(themeValue("Track"), 0.08) }, 0.45, Motion.Expo, Motion.Out)
+		if knobGlow then tween(knobGlow, { Transparency = held and 0.7 or 0.85 }, 0.3, Motion.Expo, Motion.Out) end
 	end
 	connect(interact.MouseEnter, function() if not dragging and not el.Locked then setKnobState("hover") end end)
 	connect(interact.MouseLeave, function() if not dragging then setKnobState("idle") end end)
