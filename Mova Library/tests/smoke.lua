@@ -512,11 +512,17 @@ test("Visibility, minimise, toggle key, pill", function()
 	mock.flush() -- pill slides away, window pops in
 	truthy(not Window.Hidden and Window.Main.Visible and not Window.Pill.Visible)
 	Window:ToggleMinimise()
-	mock.flush() -- body hidden once the height tween ends
+	-- contents are covered by the veil straight away, the frame folds up afterwards
+	truthy(Window.BodyVeil.Visible and Window._veilParts[1].BackgroundTransparency == 0, "veil covers the body before the fold")
+	truthy(Window.Main.Size.Y.Offset == Window.Size.Y, "window has not folded yet")
+	mock.flush() mock.flush() -- fold, then body hidden once it ends
 	truthy(Window.Minimised and not Window.Body.Visible)
+	eq(Window.Main.Size.Y.Offset, Window.Topbar.Size.Y.Offset, "folded to the topbar")
 	Window:ToggleMinimise()
-	mock.flush()
-	truthy(not Window.Minimised and Window.Body.Visible)
+	truthy(Window.Body.Visible and Window._veilParts[1].BackgroundTransparency == 0, "unfolds behind the veil")
+	mock.flush() mock.flush()
+	truthy(not Window.Minimised and Window.Body.Visible and not Window.BodyVeil.Visible, "veil lifted after the unfold")
+	eq(Window.Main.Size.Y.Offset, Window.Size.Y)
 	Window:SetToggleKey("K")
 	mock.pressKey(Enum.KeyCode.RightShift)
 	truthy(not Window.Hidden, "old toggle key ignored")

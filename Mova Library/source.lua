@@ -3862,6 +3862,24 @@ function Mova:CreateWindow(props)
 	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), Parent = content })
 	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Parent = content })
 	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = content })
+
+	-- body veil: two window-coloured sheets (sidebar + page) that cover the contents while the
+	-- window folds up / unfolds on minimise, so the elements are never seen being squashed.
+	local bodyVeil = New("Frame", { Name = "BodyVeil", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 80, Visible = false, Parent = body })
+	pcall(function() bodyVeil.Interactable = false end)
+	self.BodyVeil = bodyVeil
+	self._veilParts = {}
+	local function veilSheet(color, size, position, squareCorners)
+		local sheet = New("Frame", { BackgroundColor3 = color, BackgroundTransparency = 1, Size = size, Position = position, ZIndex = 80, Parent = bodyVeil })
+		local corner = Corner(CurrentTheme.WindowRadius or 14, sheet)
+		onTheme(corner, function() corner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
+		self._veilParts[#self._veilParts + 1] = sheet
+		for _, anchor in ipairs(squareCorners) do -- inner corners sit against the topbar / sidebar, keep them square
+			self._veilParts[#self._veilParts + 1] = New("Frame", { BackgroundColor3 = color, BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 20), AnchorPoint = anchor, Position = UDim2.fromScale(anchor.X, anchor.Y), ZIndex = 80, Parent = sheet })
+		end
+	end
+	veilSheet("Sidebar", UDim2.new(0, sidebarWidth, 1, 0), UDim2.fromOffset(0, 0), { Vector2.new(0, 0), Vector2.new(1, 0), Vector2.new(1, 1) })
+	veilSheet("Background", UDim2.new(1, -sidebarWidth, 1, 0), UDim2.fromOffset(sidebarWidth, 0), { Vector2.new(0, 0), Vector2.new(1, 0), Vector2.new(0, 1) })
 	self.Content = content
 
 	-- bottom fade (Gen 2): elements dissolve into the page colour as they scroll out at the base of
@@ -4411,19 +4429,50 @@ Window.SetVisibility = Window.SetVisible
 
 function Window:IsVisible() return not self.Hidden end
 
+-- Covers / uncovers the body with the window-coloured veil.
+function Window:_setBodyVeil(on, duration)
+	local veil = self.BodyVeil
+	if not veil then return end
+	self._veilToken = (self._veilToken or 0) + 1
+	local token = self._veilToken
+	veil.Visible = true
+	for _, part in ipairs(self._veilParts) do
+		tween(part, { BackgroundTransparency = on and 0 or 1 }, duration, Motion.Quint, Motion.Out)
+	end
+	if not on then
+		task.delay(duration + 0.02, function() if token == self._veilToken and veil.Parent then veil.Visible = false end end)
+	end
+end
+
+-- Minimise = contents first, frame second: the elements fade out behind the veil, the now-empty
+-- window folds up to its topbar; restoring unfolds the empty frame and only then reveals the
+-- contents. Nothing inside is ever seen being squashed or clipped mid-way.
+local MIN_FOLD = 0.32
 function Window:ToggleMinimise()
 	self.Minimised = not self.Minimised
 	self._minToken = (self._minToken or 0) + 1
 	local token = self._minToken
 	closePopup()
+	if self._setSearch then self._setSearch(false) end
+	local topbarHeight = self.Topbar.Size.Y.Offset
 	if self.Minimised then
 		self.ResizeHandle.Visible = false
-		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Topbar.Size.Y.Offset) }, 0.35, Motion.Expo, Motion.InOut)
-		task.delay(0.35, function() if token == self._minToken and self.Minimised then self.Body.Visible = false end end)
+		self.Body.Visible = true
+		self:_setBodyVeil(true, 0.14)
+		task.delay(0.12, function()
+			if token ~= self._minToken then return end
+			tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, topbarHeight) }, MIN_FOLD, Motion.Expo, Motion.Out)
+			task.delay(MIN_FOLD, function() if token == self._minToken and self.Minimised then self.Body.Visible = false end end)
+		end)
 	else
 		self.Body.Visible = true
-		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, 0.35, Motion.Expo, Motion.InOut)
-		task.delay(0.35, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = not IsMobile end end)
+		self:_setBodyVeil(true, 0)
+		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, MIN_FOLD, Motion.Expo, Motion.Out)
+		task.delay(MIN_FOLD * 0.7, function()
+			if token ~= self._minToken then return end
+			self:_setBodyVeil(false, 0.22)
+			task.delay(0.22, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = not IsMobile end end)
+		end)
 	end
 end
 Window.ToggleMinimize = Window.ToggleMinimise
