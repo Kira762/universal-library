@@ -109,6 +109,13 @@ test("Toggle + flags + attached keybind", function()
 	eq(log[#log], "changed:false")
 end)
 
+test("Card base is white under its surface gradient", function()
+	local t = Combat:CreateToggle({ Name = "Gradient check", Default = false })
+	eq(t.Card.BackgroundColor3, Color3.new(1, 1, 1), "card background must be white (UIGradient multiplies it)")
+	local grad = mock.find(t.Card, function(x) return x.ClassName == "UIGradient" end)
+	assert(grad and grad.Color, "card has a tint gradient")
+end)
+
 test("Slider", function()
 	local got
 	local s = Combat:CreateSlider({ Name = "FOV", Range = { 30, 120 }, Increment = 5, Default = 90, Suffix = "°", Flag = "FOV", Callback = function(v) got = v end })

@@ -764,10 +764,15 @@ end
 
 -- Gen 2 draws every surface as a white frame tinted by a vertical UIGradient (slightly lighter at
 -- the top). Same trick here, kept theme-aware through a hook.
+-- A UIGradient MULTIPLIES the frame's BackgroundColor3, so the frame underneath must be pure white
+-- or the surface comes out as Surface x Surface (near black - which is exactly how the cards used to
+-- render, darker than the page behind them).
+local WHITE = Color3.new(1, 1, 1)
 local function SurfaceGradient(parent, colorKey, amount, rotation)
 	local g = New("UIGradient", { Rotation = rotation or 90, Parent = parent })
 	onTheme(g, function()
 		local base = themeValue(colorKey or "Surface")
+		parent.BackgroundColor3 = WHITE
 		g.Color = ColorSequence.new(brighten(base, amount or 0.035), base)
 	end)
 	return g
@@ -1607,7 +1612,7 @@ local function buildCard(container, props, kind, controlWidth)
 
 	local card = New("Frame", {
 		Name = kind,
-		BackgroundColor3 = "Surface",
+		BackgroundColor3 = WHITE, -- tinted by SurfaceGradient below
 		Size = UDim2.new(1, 0, 0, 44),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = container:_nextOrder(),
@@ -1888,7 +1893,7 @@ function Container:CreateSlider(props)
 		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 14), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
 	})
 	Corner(7, track)
-	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), ZIndex = 2, Parent = track })
+	local fill = New("Frame", { BackgroundColor3 = WHITE, Size = UDim2.new(0, 0, 1, 0), ZIndex = 2, Parent = track }) -- colour comes from the gradient
 	Corner(7, fill)
 	local fillGradient = New("UIGradient", {
 		Rotation = 2, Offset = Vector2.new(0, 0.5),
@@ -2708,7 +2713,7 @@ function Container:CreateProgress(props)
 	})
 	local track = New("Frame", { BackgroundColor3 = "Track", Size = UDim2.new(1, -28, 0, 6), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -12), Parent = el.Card })
 	Corner(3, track)
-	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), Parent = track })
+	local fill = New("Frame", { BackgroundColor3 = WHITE, Size = UDim2.new(0, 0, 1, 0), Parent = track }) -- colour comes from the gradient
 	Corner(3, fill)
 	local grad = New("UIGradient", { Parent = fill })
 	onTheme(grad, function() grad.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
