@@ -515,6 +515,32 @@ test("Visibility, minimise, toggle key, pill", function()
 	truthy(not Window.Hidden and Window.Main.Visible and not Window.Pill.Visible, "pill reopens the window")
 end)
 
+test("Drag bar under the window (Gen 2) moves it, follows it, hides with it", function()
+	local bar, main = Window.DragBar, Window.Main
+	mock.flush()
+	truthy(bar.Visible and bar.Parent == main.Parent, "bar shown beside the window in the root")
+	eq(bar.Position.X.Scale, main.Position.X.Scale) eq(bar.Position.X.Offset, main.Position.X.Offset)
+	eq(bar.Position.Y.Offset, main.Position.Y.Offset + main.Size.Y.Offset / 2 + 5, "parked under the bottom edge")
+	truthy(Window.BottomFade and Window.BottomFade.Parent == Window.Content and Window.BottomFade.ZIndex > 1, "bottom fade over the content")
+	local grip = mock.find(bar, function(x) return x.ClassName == "TextButton" end)
+	local press = mock.input(Enum.UserInputType.MouseButton1, nil, Vector2.new(300, 400))
+	grip.InputBegan:Fire(press, false)
+	local before = main.Position
+	grip.InputChanged:Fire(mock.input(Enum.UserInputType.MouseMovement, nil, Vector2.new(300, 400)), false)
+	local move = mock.input(Enum.UserInputType.MouseMovement, nil, Vector2.new(340, 430))
+	grip.InputChanged:Fire(move, false)
+	mock.Services.UserInputService.InputChanged:Fire(move, false)
+	press.UserInputState = Enum.UserInputState.End press.Changed:Fire()
+	truthy(main.Position ~= before and main.Position.X.Scale == 0, "window moved by its drag bar")
+	eq(bar.Position.X.Offset, main.Position.X.Offset, "bar followed the window")
+	eq(bar.Position.Y.Offset, main.Position.Y.Offset + main.Size.Y.Offset / 2 + 5)
+	Window:Hide() mock.flush()
+	truthy(not bar.Visible, "bar hidden with the window")
+	Window:Show() mock.flush()
+	truthy(bar.Visible, "bar back with the window")
+	main.Position = UDim2.fromScale(0.5, 0.5)
+end)
+
 test("Search moves elements and restores them", function()
 	local toggle = Mova.Options.AutoFarm
 	local home = toggle.Card.Parent
@@ -746,8 +772,10 @@ end)
 
 test("Destroy everything", function()
 	local gui = mock.CoreGui:FindFirstChildOfClass("ScreenGui")
+	local bar = Window.DragBar
 	Window:Destroy()
 	truthy(Window.Destroyed)
+	truthy(bar._destroyed, "drag bar removed with the window")
 	eq(Mova.Options.AutoFarm, nil, "flags released on destroy")
 	Mova:Destroy()
 	truthy(gui._destroyed, "ScreenGui removed")

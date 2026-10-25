@@ -77,7 +77,7 @@ While the repository is private, save `source.lua` as `mova.lua` in the executor
 
 ## Feature overview
 
-- **Window**: title/subtitle/icon, sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable (mouse + touch), kept on screen.
+- **Window**: title/subtitle/icon, compact sidebar tabs with icons, player chip, top-bar search, minimise, hide (keybind or pill), resizable on desktop, draggable by the top bar (mouse + touch) or the Gen 2-style drag bar under the window, bottom fade over the content so rows scroll out softly, kept on screen.
 - **Elements**: Button, Toggle (+ attached keybind), Slider, Input (numeric / live / on-enter), Dropdown (single, multi, type-to-filter, `Refresh`), Keybind (4 modes), ColorPicker (HSV square, hue, optional alpha, hex + RGB boxes), Label (with icon), Paragraph, Divider, Section (collapsible) / Groupbox.
 - **Overlays**: Notifications (4 types, auto duration from text length or `Duration`, time-left wash, tap to dismiss, hover pauses, action buttons), Dialogs (Primary/Neutral/Danger buttons, optional `Dismissable = true` to close on tap-outside), popups close on outside click and stay inside the viewport.
 - **Themes**: Mono (default, monochrome), Dark, Light, Midnight, Ocean, Ember, Amethyst, Rose, Mocha; `Mova:RegisterTheme(name, table)`; partial tables fall back to Dark.

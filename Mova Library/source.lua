@@ -3453,6 +3453,10 @@ end
 local Window = {}
 Window.__index = Window
 
+-- bottom fade over the content area (Gen 2): height, and the extra page padding that keeps the
+-- last row readable when a page is scrolled to its end
+local BOTTOM_FADE_H, BOTTOM_FADE_PAD = 52, 12
+
 function Mova:CreateWindow(props)
 	props = props or {}
 	local root = getRoot()
@@ -3515,7 +3519,7 @@ function Mova:CreateWindow(props)
 	height = math.min(height, vp.Y - 24)
 	self.MinSize = Vector2.new(420, 260)
 	self.Size = Vector2.new(width, height)
-	local sidebarWidth = IsMobile and 136 or 168
+	local sidebarWidth = IsMobile and 118 or 146
 	self.SidebarWidth = sidebarWidth
 
 	-- main frame ----------------------------------------------------------------------------
@@ -3629,36 +3633,38 @@ function Mova:CreateWindow(props)
 	local sidebar = New("Frame", { Name = "Sidebar", BackgroundTransparency = 1, Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = sidebar })
 	self.Sidebar = sidebar
-	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -56), Parent = sidebar })
-	Padding(tabList, 10, 10, 10, 10)
-	List(tabList, 3)
+	local CHIP_H = 44
+	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -CHIP_H), Parent = sidebar })
+	Padding(tabList, 8, 8, 8, 8)
+	List(tabList, 2)
 	self.TabList = tabList
 
 	-- player chip at the bottom of the sidebar
 	-- player chip: real avatar headshot (rbxthumb of the local player, nothing fetched from the marketplace),
 	-- display name on top, @username underneath. Falls back to an initial when there is no player.
-	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
-	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -20, 0, 1), Position = UDim2.fromOffset(10, 0), Parent = chip })
+	-- Kept compact (44px, 24px avatar): the sidebar is navigation first, identity second.
+	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CHIP_H), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
+	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -16, 0, 1), Position = UDim2.fromOffset(8, 0), Parent = chip })
 	local displayName = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
 	local userName = (LocalPlayer and LocalPlayer.Name) or "guest"
 	local userId = LocalPlayer and tonumber(LocalPlayer.UserId) or 0
-	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(30, 30), Position = UDim2.fromOffset(12, 13), Parent = chip })
-	Corner(15, avatar)
+	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Parent = chip })
+	Corner(12, avatar)
 	Stroke(avatar)
-	New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 11, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
 	if userId > 0 then
 		local head = New("ImageLabel", {
-			Image = "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=60&h=60", BackgroundTransparency = 1,
+			Image = "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48", BackgroundTransparency = 1,
 			Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar,
 		})
-		Corner(15, head)
+		Corner(12, head)
 	end
 	local chipLabel = New("TextLabel", {
 		Text = displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		Size = UDim2.new(1, -62, 0, 16), Position = UDim2.fromOffset(50, 12), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		Size = UDim2.new(1, -54, 0, 14), Position = UDim2.fromOffset(44, 9), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
 	})
 	local chipSub = New("TextLabel", {
-		Text = "@" .. userName, TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -62, 0, 14), Position = UDim2.fromOffset(50, 29),
+		Text = "@" .. userName, TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -54, 0, 12), Position = UDim2.fromOffset(44, 23),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
 	})
 	self.ChipLabel, self.ChipSub = chipLabel, chipSub
@@ -3673,9 +3679,26 @@ function Mova:CreateWindow(props)
 	New("Frame", { BackgroundColor3 = "Background", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = content })
 	self.Content = content
 
+	-- bottom fade (Gen 2): elements dissolve into the page colour as they scroll out at the base of
+	-- the content instead of being cut by a hard edge. Interactable = false so it never eats input.
+	local fade = New("Frame", {
+		Name = "BottomFade", BackgroundColor3 = WHITE, Size = UDim2.new(1, 0, 0, BOTTOM_FADE_H), AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1), ZIndex = 4, Parent = content,
+	})
+	pcall(function() fade.Interactable = false end)
+	local fadeCorner = Corner(CurrentTheme.WindowRadius or 14, fade)
+	onTheme(fadeCorner, function() fadeCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
+	local fadeGradient = New("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.7), NumberSequenceKeypoint.new(1, 0) }),
+		Parent = fade,
+	})
+	onTheme(fadeGradient, function() fadeGradient.Color = ColorSequence.new(themeValue("Background")) end)
+	self.BottomFade = fade
+
 	-- search results page
 	local searchPage = New("ScrollingFrame", { Name = "SearchPage", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
-	Padding(searchPage, 10 + 36 + 12, 14, 14, 14) -- the floating search field sits over the top of this page
+	Padding(searchPage, 10 + 36 + 12, 14, 14 + BOTTOM_FADE_PAD, 14) -- the floating search field sits over the top of this page
 	List(searchPage, 6, nil, Enum.HorizontalAlignment.Center)
 	self.SearchPage = searchPage
 	self.SearchEmpty = New("TextLabel", { Text = "No results", TextSize = 13, TextColor3 = "TextDim", Size = UDim2.new(1, 0, 0, 30), Visible = false, LayoutOrder = -1, Parent = searchPage })
@@ -3720,6 +3743,60 @@ function Mova:CreateWindow(props)
 
 	-- drag the window by its topbar (open dropdowns / pickers would be left floating, so they close)
 	makeDraggable(main, topbar, { onDragStart = closePopup })
+
+	-- drag bar (Gen 2): a slim pill hanging under the window's bottom edge that also moves it. Lives
+	-- in the root (the window clips its children) and is re-parked whenever the window moves or
+	-- resizes, so a centred window keeps a centred bar and a dragged one keeps it underneath.
+	local dragZone = New("Frame", { Name = "DragBar", BackgroundTransparency = 1, Size = UDim2.fromOffset(150, 22), AnchorPoint = Vector2.new(0.5, 0), ZIndex = 5, Visible = false, Parent = root })
+	local dragPill = New("Frame", {
+		BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 9), ZIndex = 6, Parent = dragZone,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = dragPill })
+	Shadow(dragPill, "Text", 10, 0.88)
+	local dragInteract = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = dragZone })
+	self.DragBar, self.DragPill = dragZone, dragPill
+	local DRAG_REST, DRAG_HOT = 0.7, 0.45
+	local function syncDragBar()
+		local pos = main.Position
+		dragZone.Position = UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset + main.Size.Y.Offset / 2 + 5)
+	end
+	self._syncDragBar = syncDragBar
+	connect(main:GetPropertyChangedSignal("Position"), syncDragBar)
+	connect(main:GetPropertyChangedSignal("Size"), syncDragBar)
+	syncDragBar()
+	local dragHeld = false
+	connect(dragZone.MouseEnter, function()
+		if not dragHeld and not self.Hidden then tween(dragPill, { Size = UDim2.fromOffset(120, 4), BackgroundTransparency = DRAG_HOT }, 0.25, Motion.Back, Motion.Out) end
+	end)
+	connect(dragZone.MouseLeave, function()
+		if not dragHeld and not self.Hidden then tween(dragPill, { Size = UDim2.fromOffset(100, 4), BackgroundTransparency = DRAG_REST }, 0.25, Motion.Back, Motion.Out) end
+	end)
+	makeDraggable(main, dragInteract, {
+		onDragStart = function()
+			dragHeld = true
+			closePopup()
+			tween(dragPill, { Size = UDim2.fromOffset(120, 4), BackgroundTransparency = DRAG_HOT }, Motion.fast)
+		end,
+		onDragEnd = function()
+			dragHeld = false
+			tween(dragPill, { Size = UDim2.fromOffset(100, 4), BackgroundTransparency = DRAG_REST }, 0.25, Motion.Back, Motion.Out)
+		end,
+	})
+	function self:_showDragBar(delay)
+		if IsMobile then return end
+		task.delay(delay or 0, function()
+			if self.Destroyed or self.Hidden then return end
+			syncDragBar()
+			dragZone.Visible = true
+			dragPill.Size = UDim2.fromOffset(0, 4)
+			dragPill.BackgroundTransparency = 1
+			tween(dragPill, { Size = UDim2.fromOffset(100, 4), BackgroundTransparency = DRAG_REST }, 0.45, Motion.Expo, Motion.Out)
+		end)
+	end
+	function self:_hideDragBar()
+		tween(dragPill, { Size = UDim2.fromOffset(0, 4), BackgroundTransparency = 1 }, 0.18, Motion.Quint, Motion.Out)
+		task.delay(0.19, function() if self.Hidden or self.Destroyed then dragZone.Visible = false end end)
+	end
 
 	-- wire topbar
 	connect(closeBtn.MouseButton1Click, function() self:Hide() end)
@@ -3798,6 +3875,7 @@ function Mova:CreateWindow(props)
 	onTheme(veilCorner, function() veilCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
 	self.Veil = veil
 	self._introAt = os.clock()
+	local keySystemRequested = prop(props, nil, "KeySystem", "keySystem")
 
 	-- intro: pop from 0.86 with Expo Out while the veil lifts
 	veil.Visible = true
@@ -3813,11 +3891,12 @@ function Mova:CreateWindow(props)
 		tween(veil, { BackgroundTransparency = 1 }, 0.45, Motion.Quint, Motion.Out)
 		task.delay(0.46, function() if not self.Destroyed and not self.Hidden then veil.Visible = false end end)
 	end)
+	if not keySystemRequested then self:_showDragBar(0.3) end
 
 	Mova.Windows[#Mova.Windows + 1] = self
 
 	-- key system ------------------------------------------------------------------------------
-	local keySystem = prop(props, nil, "KeySystem", "keySystem")
+	local keySystem = keySystemRequested
 	local keySettings = prop(props, nil, "KeySettings", "keySettings")
 	if keySystem == true and typeof(keySettings) == "table" then keySystem = keySettings end
 	if typeof(keySystem) == "table" then
@@ -3883,26 +3962,26 @@ function Window:CreateTab(props, icon)
 	tab.Tab = tab
 
 	local button = New("TextButton", {
-		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = prop(props, self:_nextOrderTab(), "Order", "order"), Parent = self.TabList,
+		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = prop(props, self:_nextOrderTab(), "Order", "order"), Parent = self.TabList,
 	})
 	Corner(nil, button)
 	local buttonStroke = Stroke(button)
 	buttonStroke.Transparency = 1
 	local hover = hoverOverlay(button)
 	local iconImage = resolveIcon(iconValue)
-	local labelX = 12
+	local labelX = 11
 	if iconImage then
-		New("ImageLabel", { Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(11, 10), Name = "Icon", Parent = button })
-		labelX = 34
+		New("ImageLabel", { Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Name = "Icon", Parent = button })
+		labelX = 32
 	end
 	local label = New("TextLabel", {
-		TextSize = 13, Weight = "Medium", TextColor3 = "TextDim", Size = UDim2.new(1, -labelX - 8, 1, 0), Position = UDim2.fromOffset(labelX, 0),
+		TextSize = 13, Weight = "Medium", TextColor3 = "TextDim", Size = UDim2.new(1, -labelX - 6, 1, 0), Position = UDim2.fromOffset(labelX, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = button,
 	})
 	bindText(label, tostring(name))
 
 	local page = New("ScrollingFrame", { Name = "Page", Size = UDim2.fromScale(1, 1), Visible = false, Parent = self.Content })
-	Padding(page, 14, 14, 14, 14)
+	Padding(page, 14, 14, 14 + BOTTOM_FADE_PAD, 14) -- extra room at the end so the last row clears the bottom fade
 	List(page, 6, nil, Enum.HorizontalAlignment.Center)
 
 	tab.Button, tab.Label, tab.Stroke, tab.Hover, tab.Page, tab.Holder, tab.Icon = button, label, buttonStroke, hover, page, page, button:FindFirstChild("Icon")
@@ -4105,6 +4184,7 @@ function Window:Show()
 	tween(self.MainStroke, { Transparency = CurrentTheme.StrokeTransparency }, Motion.slow)
 	tween(self.Veil, { BackgroundTransparency = 1 }, 0.3, Motion.Quint, Motion.Out)
 	task.delay(0.31, function() if token == self._visToken and not self.Hidden then self.Veil.Visible = false end end)
+	self:_showDragBar(0.2)
 end
 
 function Window:Hide()
@@ -4115,6 +4195,7 @@ function Window:Hide()
 	self._visToken = (self._visToken or 0) + 1
 	local token = self._visToken
 	self.Veil.Visible = true
+	self:_hideDragBar()
 	tween(self.Veil, { BackgroundTransparency = 0 }, 0.12, Motion.Quint, Motion.Out)
 	tween(self.MainScale, { Scale = 0.92 }, 0.25, Motion.Quint, Motion.In)
 	tween(self.MainStroke, { Transparency = 1 }, 0.15)
@@ -4206,6 +4287,7 @@ function Window:Destroy()
 	KeybindListening = false
 	self.Main:Destroy()
 	self.Pill:Destroy()
+	if self.DragBar then self.DragBar:Destroy() end
 	local i = indexOf(Mova.Windows, self)
 	if i then table.remove(Mova.Windows, i) end
 end
