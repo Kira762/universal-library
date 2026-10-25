@@ -82,7 +82,7 @@ Controls:CreateToggle({ Name = "Locked toggle", Locked = true, LockReason = "Nee
 Overlays:CreateButton({ Name = "Notification (all 4 types)", Callback = function()
 	for i, t in ipairs({ "Info", "Success", "Warning", "Error" }) do
 		task.delay((i - 1) * 0.25, function()
-			Mova:Notify({ Title = t, Content = "Slides in from the right, bar glows.", Type = t, Duration = 4, Actions = i == 1 and { { Text = "Action" }, { Text = "Close" } } or nil })
+			Mova:Notify({ Title = t, Content = "Tap to dismiss. Hovering pauses the timer.", Type = t, Actions = i == 1 and { { Text = "Action" }, { Text = "Later" } } or nil })
 		end)
 	end
 end })

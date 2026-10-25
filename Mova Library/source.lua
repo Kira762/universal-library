@@ -1340,7 +1340,7 @@ local function getNotifyHolder()
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, -16, 1, -16),
-		Size = UDim2.fromOffset(300, 600),
+		Size = UDim2.fromOffset(IsMobile and 248 or 272, 600), -- Gen 2 keeps these around 260; a wide toast reads as a panel
 		Parent = Layers.notify,
 	})
 	List(NotifyHolder, 8, Enum.FillDirection.Vertical, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Bottom)
@@ -1352,10 +1352,14 @@ function Mova:Notify(props)
 	props = props or {}
 	local title = prop(props, nil, "Title", "title")
 	local content = prop(props, "", "Content", "content", "Description", "Text")
-	local duration = prop(props, 5, "Duration", "duration")
+	local duration = prop(props, nil, "Duration", "duration")
 	local icon = prop(props, nil, "Icon", "icon", "Image")
 	local kind = prop(props, "Info", "Type", "type")
 	local actions = prop(props, nil, "Actions", "actions", "Buttons")
+	if duration == nil then
+		-- read time from the content length (Gen 2's autoDuration), clamped to 3-9s
+		duration = clamp(#tostring(content) * 0.06 + 3, 3, 9)
+	end
 
 	local holder = getNotifyHolder()
 	local accentKey = (kind == "Error" and "Error") or (kind == "Success" and "Success") or (kind == "Warning" and "Warning") or "Accent"
@@ -1366,7 +1370,7 @@ function Mova:Notify(props)
 		BackgroundColor3 = "Surface",
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Position = UDim2.fromOffset(340, 0),
+		Position = UDim2.fromOffset(320, 0),
 		ClipsDescendants = true,
 		BackgroundTransparency = 1,
 		Parent = slot,
@@ -1376,6 +1380,17 @@ function Mova:Notify(props)
 	cardStroke.Transparency = 1
 	Shadow(card, "Shadow", 32, 0.4)
 	Padding(card, 12, 14, 12, 14)
+	-- Time left is shown as a quiet wash of the type colour behind the text that drains from
+	-- right to left (WindUI's duration fill) instead of a hairline under the card. It is a child
+	-- of the card, so the padding offsets it: counter the padding to cover the whole card.
+	local wash = nil
+	if duration and duration > 0 then
+		wash = New("Frame", {
+			BackgroundColor3 = accentKey, BackgroundTransparency = 0.9,
+			Position = UDim2.fromOffset(-14, -12), Size = UDim2.new(1, 28, 1, 24), ZIndex = 0, Parent = card,
+		})
+		Corner(12, wash)
+	end
 
 	local iconImage = resolveIcon(icon)
 	local textLeft = iconImage and 28 or 0
@@ -1387,7 +1402,7 @@ function Mova:Notify(props)
 
 	local body = New("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -textLeft - 20, 0, 0),
+		Size = UDim2.new(1, -textLeft, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Position = UDim2.fromOffset(textLeft, 0),
 		Parent = card,
@@ -1421,8 +1436,9 @@ function Mova:Notify(props)
 	local function close()
 		if closed then return end
 		closed = true
-		tween(card, { BackgroundTransparency = 1, Position = UDim2.fromOffset(340, 0) }, 0.3, Motion.Quint, Motion.In)
+		tween(card, { BackgroundTransparency = 1, Position = UDim2.fromOffset(320, 0) }, 0.3, Motion.Quint, Motion.In)
 		tween(cardStroke, { Transparency = 1 }, 0.15)
+		if wash then tween(wash, { BackgroundTransparency = 1 }, 0.15) end
 		for _, d in ipairs(card:GetDescendants()) do
 			pcall(function()
 				if d:IsA("TextLabel") or d:IsA("TextButton") then tween(d, { TextTransparency = 1 }, 0.15) end
@@ -1457,27 +1473,32 @@ function Mova:Notify(props)
 		end
 	end
 
-	local closeBtn = New("TextButton", {
-		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22),
-		Position = UDim2.new(1, 2, 0, -3), AnchorPoint = Vector2.new(1, 0), Parent = card,
+	-- No close button: a tap anywhere on the card dismisses it (Gen 2), and hovering it pauses the
+	-- timer so a long message can be read. The tap target sits under the action buttons.
+	local hovered = false
+	local tapZone = New("TextButton", {
+		Text = "", BackgroundTransparency = 1, AutoButtonColor = false,
+		Position = UDim2.fromOffset(-14, -12), Size = UDim2.new(1, 28, 1, 24), ZIndex = 0, Parent = card,
 	})
-	Corner(6, closeBtn)
-	local closeGlyph = Glyph("close", closeBtn, "TextDim", 12, 1.5)
-	connect(closeBtn.MouseEnter, function() tween(closeBtn, { BackgroundTransparency = 0.92 }, Motion.fast) tintGlyph(closeGlyph, themeValue("Text")) end)
-	connect(closeBtn.MouseLeave, function() tween(closeBtn, { BackgroundTransparency = 1 }, Motion.slow) tintGlyph(closeGlyph, themeValue("TextDim"), Motion.slow) end)
-	connect(closeBtn.MouseButton1Click, close)
+	local tapConns = {}
+	tapConns[1] = tapZone.MouseEnter:Connect(function() hovered = true end)
+	tapConns[2] = tapZone.MouseLeave:Connect(function() hovered = false end)
+	tapConns[3] = tapZone.MouseButton1Click:Connect(close)
 
-	local progress = nil
 	if duration and duration > 0 then
-		-- quiet countdown line in the text colour, not the type colour
-		progress = New("Frame", {
-			BackgroundColor3 = "TextDim", BackgroundTransparency = 0.7,
-			Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, 8), AnchorPoint = Vector2.new(0, 1),
-			Parent = card,
-		})
-		Corner(1, progress)
-		tween(progress, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
-		task.delay(duration, close)
+		-- dwell: advance only while not hovered; the wash follows the remaining fraction
+		task.spawn(function()
+			local elapsed = 0
+			while not closed and card.Parent do
+				local dt = task.wait()
+				if type(dt) ~= "number" or dt <= 0 then dt = 1 / 60 end
+				if not hovered then elapsed = elapsed + dt end
+				local left = clamp(1 - elapsed / duration, 0, 1)
+				if wash then wash.Size = UDim2.new(left, 28 * left, 1, 24) end
+				if elapsed >= duration then break end
+			end
+			if not closed then close() end
+		end)
 	end
 
 	-- slide in from the right edge
