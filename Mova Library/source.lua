@@ -3069,25 +3069,37 @@ function Mova:CreateWindow(props)
 	local sidebar = New("Frame", { Name = "Sidebar", BackgroundTransparency = 1, Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = sidebar })
 	self.Sidebar = sidebar
-	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -52), Parent = sidebar })
+	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -56), Parent = sidebar })
 	Padding(tabList, 10, 10, 10, 10)
 	List(tabList, 3)
 	self.TabList = tabList
 
 	-- player chip at the bottom of the sidebar
-	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
+	-- player chip: real avatar headshot (rbxthumb of the local player, nothing fetched from the marketplace),
+	-- display name on top, @username underneath. Falls back to an initial when there is no player.
+	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -20, 0, 1), Position = UDim2.fromOffset(10, 0), Parent = chip })
-	local avatar = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(26, 26), Position = UDim2.fromOffset(12, 13), Parent = chip })
-	Corner(13, avatar)
-	local playerName = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
-	New("TextLabel", { Text = playerName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "OnAccent", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	local displayName = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
+	local userName = (LocalPlayer and LocalPlayer.Name) or "guest"
+	local userId = LocalPlayer and tonumber(LocalPlayer.UserId) or 0
+	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(30, 30), Position = UDim2.fromOffset(12, 13), Parent = chip })
+	Corner(15, avatar)
+	Stroke(avatar)
+	New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	if userId > 0 then
+		local head = New("ImageLabel", {
+			Image = "rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=60&h=60", BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar,
+		})
+		Corner(15, head)
+	end
 	local chipLabel = New("TextLabel", {
-		Text = playerName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		Size = UDim2.new(1, -56, 0, 16), Position = UDim2.fromOffset(46, 11), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		Text = displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
+		Size = UDim2.new(1, -62, 0, 16), Position = UDim2.fromOffset(50, 12), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
 	})
 	local chipSub = New("TextLabel", {
-		Text = "Mova " .. Mova.Version, TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -56, 0, 14), Position = UDim2.fromOffset(46, 27),
-		TextXAlignment = Enum.TextXAlignment.Left, Parent = chip,
+		Text = "@" .. userName, TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -62, 0, 14), Position = UDim2.fromOffset(50, 29),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
 	})
 	self.ChipLabel, self.ChipSub = chipLabel, chipSub
 
