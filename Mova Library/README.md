@@ -14,7 +14,7 @@ Tab:CreateSlider({ Name = "Speed", Range = { 16, 100 }, Default = 16, Flag = "Sp
 
 | | |
 | --- | --- |
-| **File** | [`source.lua`](source.lua) — one file, no dependencies, ~3.4k lines |
+| **File** | [`source.lua`](source.lua) — one file, no dependencies, ~5.4k lines |
 | **Example** | [`example.lua`](example.lua) — every element and option |
 | **Tests** | [`tests/`](tests/) — headless Roblox mock + smoke suite (`python3 tests/run.py --all`) |
 | **License** | MIT |
@@ -65,24 +65,22 @@ All timings live in one `Motion` table (`fast 0.12`, `base 0.22`, `slow 0.4`, Qu
 
 ## Quick test
 
-`test.lua` is a script with **no library code inside it** — it loads `source.lua` from the branch URL (falls back to `main`, then to a local `readfile("mova.lua")`) and never has to change when the library does. It builds one window organised by what you want to check; every callback prints a `[Mova test]` line:
-
-| Tab | Covers |
-| --- | --- |
-| **Elements** | every element in several variants: buttons (plain / description / icon), toggles (+ keybind), sliders (percent, large range, decimals, negative, prefix), inputs (on-enter, live, numeric, clear-on-enter), dropdowns (single, multi + search, refreshable), keybinds (Press / Toggle / Hold / mouse), colour pickers (± alpha), labels with icons, paragraphs, dividers |
-| **Layout** | sections (open / collapsed), two- and three-column rows, a grid of columns, responsive shrinking and stacking |
-| **States** | lock / unlock, show / hide, live `SetTitle` / `SetDescription` / `Paragraph:Set`, programmatic `Set` with and without callbacks, `Window:Set/Get`, `OnChanged`, `Destroy` |
-| **Overlays** | notifications (each type, actions, auto duration, asset icon, stacking), toasts, dialogs (confirm, dismissable, three buttons) |
-| **Window** | hide / show / minimise / recentre, title + subtitle, rebinding the toggle key, themes + a registered custom theme, save / load / list / autoload configs, locale switch, an icon showcase, search tip, unload |
-| **Stress** | 30 toggles + 10 sliders with bulk flip / randomise and a `Mova.Flags` dump |
-
-Run it from your executor to check the latest push:
+`test.lua` contains **no library code**: it loads `source.lua` from the branch URL (fallbacks: `main`, then a local `readfile("mova.lua")`), so it never needs updating. Every callback prints a `[Mova test]` line.
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Kira762/universal-library/arena/98807242-universal-library/Mova%20Library/test.lua"))()
 ```
 
-While the repository is private, save `source.lua` as `mova.lua` in the executor workspace and paste `test.lua` directly.
+| Tab | Checks |
+| --- | --- |
+| **Elements** | every element, a few variants each (icons, descriptions, keybind on a toggle, multi + search dropdown, alpha picker …) |
+| **Layout** | sections, 2- and 3-column rows, a column grid, responsive shrink-then-stack |
+| **States** | lock, hide, live retitle, `Set` with / without callbacks, `Window:Set/Get`, `OnChanged`, `Destroy` |
+| **Overlays** | notifications (types, actions, auto duration, icons, stacking), toasts, dialogs |
+| **Window** | hide / minimise / centre, toggle key, title bar, tags (add, recolour, hide, remove), profile, themes, configs, locale, icons, search, unload |
+| **Stress** | 30 toggles + 10 sliders, bulk flip / randomise, `Mova.Flags` dump |
+
+Private repo? Save `source.lua` as `mova.lua` in the executor workspace and run `test.lua` directly.
 
 ---
 
@@ -119,8 +117,8 @@ All option tables accept several aliases (Rayfield, Linoria/Obsidian and lower-c
 | `KeySystem` / `KeySettings` | bool \| table | — | `{ Title, Subtitle, Note, Keys = {}, KeyURL, Validate = fn(key), Link, SaveKey = true, FileName }` |
 | `Translations`, `Locale` | table, string | — | See localisation |
 | `SettingsTab` | bool | `true` | Built-in Settings tab (theme, toggle key, configs, unload) |
-| `Tags` | table | — | Topbar pills after the title, e.g. `{ { Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255,175,15) }, { Text = "Online", Dot = true, Color = "Success" } }` — see *Tags* below |
-| `Profile` | table / `false` | — | Profile card at the base of the sidebar: `{ Name, Subtitle, Image }` overrides the local player's display name / `@username` / headshot; `false` removes it and the tab list takes its height. Purely informational — not a control. |
+| `Tags` | table | — | Topbar tags after the title: `{ { Text = "Beta", Style = "Filled", Color = Color3.fromRGB(255,175,15) }, { Text = "Online", Dot = true, Color = "Success" }, { Text = "Pro", Icon = "crown" } }` — see [Tags](#tags) |
+| `Profile` | table / `false` | — | Footer at the base of the sidebar: `{ Name, Subtitle, Image }` overrides the local player's display name / `@username` / headshot; `false` removes it. Informational only — not a control. |
 
 **Window methods**: `CreateTab(opts | name, icon)`, `SelectTab(tab | name | index)`, `Show()`, `Hide()`, `Toggle()`, `SetVisible(bool)`, `IsVisible()`, `ToggleMinimise()`, `SetTitle()`, `SetSubtitle()`, `SetProfile{ Name, Subtitle, Image }`, `SetProfileVisible(bool)`, `CreateTag(opts)`, `SetToggleKey(key)`, `ChangeTheme(name | table)`, `Notify(opts)`, `Dialog(opts)`, `Toast(text)`, `Get(flag)`, `Set(flag, value, silent)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`, `SetAutoload(name | nil)`, `Destroy()`.
 Aliases: `AddTab`, `Navigate`, `ToggleHide`, `SetVisibility`, `ToggleMinimize`, `Minimize`, `ModifyTheme`, `SetTheme`, `Popup`, `Unload`, `Save`, `Load`.
@@ -194,12 +192,13 @@ Any `TextLabel/TextButton/TextBox` created through `Mova.New` accepts `Weight = 
 
 ### Tags
 
-Rayfield Gen 2's topbar tags, with more options. `Window:CreateTag{ Text, Icon | Dot = true, Color, Style, Callback, Order }` returns a handle with `Set{...}`, `SetText`, `SetIcon`, `SetColor`, `SetStyle`, `SetVisible`, `Destroy`.
+Rayfield Gen 2's topbar tags with more options. `Window:CreateTag{ Text, Icon, Dot, Color, Style, Callback, Order }` returns a handle with `Set{...}`, `SetText`, `SetIcon`, `SetColor`, `SetStyle`, `SetVisible`, `Destroy`.
 
-- `Style = "Soft"` (default) is a tinted pill with coloured text and a hairline, so it sits on every theme; `"Filled"` is Gen 2's solid pill with contrast text.
-- `Color` is a `Color3` **or a theme key** (`"Accent"`, `"Success"`, `"Warning"`, `"Error"` …) that follows theme changes.
-- A `Callback` makes the tag clickable (hover wash).
-- Tags live in the topbar row `[icon][title][tags]…[search][buttons]`, which is laid out by hand: the title keeps its natural width (up to half the row), tags that don't fit hide from the end, and when the **search** opens it takes the free room *inside the topbar* — tags step aside first, then the title truncates down to 64 px, so the field always gets at least 150 px and nothing overlaps. Everything re-flows on resize.
+- `Icon` — any [icon](#icons); shown before the text (or alone, as a square tag). `Dot = true` draws a status dot instead.
+- `Style` — `"Soft"` (default): tinted, coloured text and hairline, works on every theme. `"Filled"`: Gen 2's solid tag with contrast text.
+- `Color` — a `Color3` or a theme key (`"Accent"`, `"Success"`, `"Warning"`, `"Error"`) that follows theme changes.
+- `Callback` — makes the tag clickable.
+- Layout: `[icon][title][tags] … [search][buttons]`. Tags that don't fit hide from the end; when the search opens it takes the free room inside the topbar (tags step aside first, then the title shrinks to 64 px) so nothing overlaps.
 
 ### Configs
 

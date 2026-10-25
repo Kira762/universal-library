@@ -3374,7 +3374,7 @@ function Container:CreateSection(props)
 		TextXAlignment = Enum.TextXAlignment.Left, Parent = header,
 	})
 	bindText(title, tostring(name):upper())
-	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Visible = collapsible, Parent = header })
+	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Visible = collapsible, Parent = header })
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 13, 1.5)
 	if collapsible then
 		connect(header.MouseEnter, function() tween(title, { TextColor3 = themeValue("Text") }, Motion.fast) tintGlyph(chevron, themeValue("Text")) end)
@@ -3635,7 +3635,7 @@ Window.__index = Window
 -- bottom fade over the content area (Gen 2): height, and the extra page padding that keeps the
 -- last row readable when a page is scrolled to its end
 local BOTTOM_FADE_H, BOTTOM_FADE_PAD = 52, 12
-local TAG_H, TAG_GAP = 20, 6 -- topbar tag pill height / spacing
+local TAG_H, TAG_GAP = 22, 6 -- topbar tag height / spacing
 
 function Mova:CreateWindow(props)
 	props = props or {}
@@ -3860,25 +3860,30 @@ function Mova:CreateWindow(props)
 	local userId = LocalPlayer and tonumber(LocalPlayer.UserId) or 0
 	local footer = New("Frame", { Name = "Profile", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, PROFILE_H), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Visible = showProfile, Parent = sidebar })
 	pcall(function() footer.Interactable = false end)
-	local AV = 30
-	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(AV, AV), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Parent = footer })
-	Corner(AV / 2, avatar)
-	Stroke(avatar, "Stroke", 1, 0.8)
-	New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	local AV = 32
+	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(AV, AV), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Parent = footer })
+	Corner(10, avatar)
+	Stroke(avatar, "Stroke", 1, 0.85)
+	-- initial only shows while there is no picture: headshots are PNGs with a transparent
+	-- background, so a letter underneath would bleed through the face
+	local initial = New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 13, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
 	local head = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar })
-	Corner(AV / 2, head)
+	Corner(10, head)
 	local function setAvatar(image)
 		local spec = image and resolveIcon(image) or nil
 		if spec then applyIcon(head, spec) head.Visible = true else head.Image = "" head.Visible = false end
+		initial.Visible = not head.Visible
 	end
-	setAvatar(profileProps.Image or profileProps.Avatar or (userId > 0 and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=48&h=48") or nil))
-	local textX = 14 + AV + 10
+	self._setAvatar = setAvatar
+	self.ProfileAvatar, self.ProfileInitial, self.ProfileImage = avatar, initial, head
+	setAvatar(profileProps.Image or profileProps.Avatar or (userId > 0 and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=60&h=60") or nil))
+	local textX = 12 + AV + 9
 	local chipLabel = New("TextLabel", {
 		Text = profileProps.Name or displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		Size = UDim2.new(1, -textX - 10, 0, 14), Position = UDim2.new(0, textX, 0.5, -14), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+		Size = UDim2.new(1, -textX - 8, 0, 14), Position = UDim2.new(0, textX, 0.5, -14), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
 	})
 	local chipSub = New("TextLabel", {
-		Text = profileProps.Subtitle or ("@" .. userName), TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -textX - 10, 0, 12), Position = UDim2.new(0, textX, 0.5, 1),
+		Text = profileProps.Subtitle or ("@" .. userName), TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -textX - 8, 0, 12), Position = UDim2.new(0, textX, 0.5, 1),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
 	})
 	self.Profile, self.ChipLabel, self.ChipSub, self.ProfileAvatar = footer, chipLabel, chipSub, head
@@ -3896,7 +3901,7 @@ function Mova:CreateWindow(props)
 
 	-- body veil: two window-coloured sheets (sidebar + page) that cover the contents while the
 	-- window folds up / unfolds on minimise, so the elements are never seen being squashed.
-	local bodyVeil = New("Frame", { Name = "BodyVeil", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 80, Visible = false, Parent = body })
+	local bodyVeil = New("Frame", { Name = "BodyVeil", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -TOPBAR), Position = UDim2.fromOffset(0, TOPBAR), ZIndex = 80, Visible = false, Parent = main })
 	pcall(function() bodyVeil.Interactable = false end)
 	self.BodyVeil = bodyVeil
 	self._veilParts = {}
@@ -4017,7 +4022,6 @@ function Mova:CreateWindow(props)
 		end,
 	})
 	function self:_showDragBar(delay)
-		if IsMobile then return end
 		task.delay(delay or 0, function()
 			if self.Destroyed or self.Hidden then return end
 			syncDragBar()
@@ -4552,17 +4556,23 @@ function Window:_setBodyVeil(on, duration)
 	local token = self._veilToken
 	veil.Visible = true
 	for _, part in ipairs(self._veilParts) do
-		tween(part, { BackgroundTransparency = on and 0 or 1 }, duration, Motion.Quint, Motion.Out)
+		if duration and duration > 0 then
+			tween(part, { BackgroundTransparency = on and 0 or 1 }, duration, Motion.Quint, Motion.Out)
+		else
+			part.BackgroundTransparency = on and 0 or 1
+		end
 	end
 	if not on then
-		task.delay(duration + 0.02, function() if token == self._veilToken and veil.Parent then veil.Visible = false end end)
+		task.delay((duration or 0) + 0.02, function() if token == self._veilToken and veil.Parent then veil.Visible = false end end)
 	end
 end
 
--- Minimise = contents first, frame second: the elements fade out behind the veil, the now-empty
--- window folds up to its topbar; restoring unfolds the empty frame and only then reveals the
--- contents. Nothing inside is ever seen being squashed or clipped mid-way.
-local MIN_FOLD = 0.32
+-- Minimise = contents first, frame second. The veil (window-coloured sheets above the whole body,
+-- profile footer included) fades in, the body is then hidden outright, and only the empty frame
+-- folds up to its topbar. Restoring unfolds the empty frame behind the veil and reveals the body
+-- once it has landed. Nothing inside is ever seen squashed, clipped or peeking out.
+local MIN_FOLD = 0.3
+local VEIL_IN = 0.14
 function Window:ToggleMinimise()
 	self.Minimised = not self.Minimised
 	self._minToken = (self._minToken or 0) + 1
@@ -4572,21 +4582,22 @@ function Window:ToggleMinimise()
 	local topbarHeight = self.Topbar.Size.Y.Offset
 	if self.Minimised then
 		self.ResizeHandle.Visible = false
-		self.Body.Visible = true
-		self:_setBodyVeil(true, 0.14)
-		task.delay(0.12, function()
+		self:_setBodyVeil(true, VEIL_IN)
+		task.delay(VEIL_IN, function()
 			if token ~= self._minToken then return end
+			self.Body.Visible = false
 			tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, topbarHeight) }, MIN_FOLD, Motion.Expo, Motion.Out)
-			task.delay(MIN_FOLD, function() if token == self._minToken and self.Minimised then self.Body.Visible = false end end)
+			task.delay(MIN_FOLD + 0.02, function() if token == self._minToken and self.Minimised then self.BodyVeil.Visible = false end end)
 		end)
 	else
-		self.Body.Visible = true
+		self.Body.Visible = false
 		self:_setBodyVeil(true, 0)
 		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, MIN_FOLD, Motion.Expo, Motion.Out)
-		task.delay(MIN_FOLD * 0.7, function()
+		task.delay(MIN_FOLD * 0.75, function()
 			if token ~= self._minToken then return end
-			self:_setBodyVeil(false, 0.22)
-			task.delay(0.22, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = not IsMobile end end)
+			self.Body.Visible = true
+			self:_setBodyVeil(false, 0.2)
+			task.delay(0.2, function() if token == self._minToken and not self.Minimised then self.ResizeHandle.Visible = not IsMobile end end)
 		end)
 	end
 end
@@ -4608,10 +4619,7 @@ function Window:SetProfile(info)
 		local x = self._profileTextX or 54
 		self.ChipLabel.Position = text ~= "" and UDim2.new(0, x, 0.5, -14) or UDim2.new(0, x, 0.5, -7)
 	end
-	if info.Image ~= nil then
-		local spec = info.Image and resolveIcon(info.Image) or nil
-		if spec then applyIcon(self.ProfileAvatar, spec) self.ProfileAvatar.Visible = true else self.ProfileAvatar.Image = "" self.ProfileAvatar.Visible = false end
-	end
+	if info.Image ~= nil and self._setAvatar then self._setAvatar(info.Image or nil) end
 	return self
 end
 
@@ -4658,10 +4666,10 @@ function Window:CreateTag(props)
 	})
 	Corner(6, frame)
 	local stroke = New("UIStroke", { Color = WHITE, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
-	local icon = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(12, 12), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0), ImageTransparency = 1, Visible = false, Parent = frame })
-	local dot = New("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Visible = false, Parent = frame })
+	local icon = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(13, 13), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), ImageTransparency = 1, Visible = false, Parent = frame })
+	local dot = New("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0), Visible = false, Parent = frame })
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = dot })
-	local label = New("TextLabel", { Text = "", TextSize = 11, Weight = "Medium", TextColor3 = WHITE, TextTransparency = 1, Size = UDim2.fromOffset(0, TAG_H), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+	local label = New("TextLabel", { Text = "", TextSize = 12, Weight = "Medium", TextColor3 = WHITE, TextTransparency = 1, Size = UDim2.fromOffset(0, TAG_H), Position = UDim2.fromOffset(9, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 	tag.Frame, tag.Label, tag.IconLabel, tag.DotFrame, tag.Stroke = frame, label, icon, dot, stroke
 	ThemeRegistry[label] = { FontFace = "@Medium" }
 
@@ -4680,10 +4688,10 @@ function Window:CreateTag(props)
 			-- soft text is the tag colour pushed towards the theme's text so it stays legible on
 			-- light pages (a pastel on white) as well as dark ones
 			local lightPage = luminance(themeValue("Background") or Color3.new()) > 0.5
-			fg = lightPage and c:Lerp(Color3.new(0, 0, 0), 0.45) or c:Lerp(Color3.new(1, 1, 1), 0.15)
+			fg = lightPage and c:Lerp(Color3.new(0, 0, 0), 0.52) or c:Lerp(Color3.new(1, 1, 1), 0.15)
 		end
 		local props = {
-			bg = filled and 0 or 0.86, stroke = filled and 1 or 0.6,
+			bg = filled and 0 or 0.84, stroke = filled and 1 or 0.55,
 		}
 		local t = time or 0
 		tween(frame, { BackgroundColor3 = c, BackgroundTransparency = shown and props.bg or 1 }, t)
@@ -4693,15 +4701,15 @@ function Window:CreateTag(props)
 		tween(dot, { BackgroundColor3 = fg, BackgroundTransparency = shown and 0 or 1 }, t)
 	end
 	local function measure()
-		local x = 8
+		local x = 9
 		local hasText = tag.Text ~= nil and tag.Text ~= ""
 		icon.Visible = tag.Icon ~= nil
 		dot.Visible = not icon.Visible and tag.Dot and true or false
 		if icon.Visible then
-			icon.Position = UDim2.new(0, hasText and 7 or 4, 0.5, 0)
-			x = 7 + 12 + 5
+			icon.Position = UDim2.new(0, hasText and 8 or math.floor((TAG_H - 13) / 2), 0.5, 0)
+			x = 8 + 13 + 5
 		elseif dot.Visible then
-			x = 8 + 6 + 6
+			x = 9 + 6 + 6
 		end
 		label.Visible = hasText
 		local w = x
@@ -4711,7 +4719,7 @@ function Window:CreateTag(props)
 			if tw <= 0 then tw = #label.Text * 6 end
 			label.Position = UDim2.fromOffset(x, 0)
 			label.Size = UDim2.fromOffset(tw + 1, TAG_H)
-			w = x + tw + 1 + 8
+			w = x + tw + 1 + 9
 		else
 			w = TAG_H -- icon-only tag is square
 		end
@@ -4925,7 +4933,7 @@ end
 
 function Window:_createSettingsTab()
 	if self.SettingsTab then return self.SettingsTab end
-	local tab = self:CreateTab({ Name = "Settings", _internal = true, Order = 10000 })
+	local tab = self:CreateTab({ Name = "Settings", Icon = "settings", _internal = true, Order = 10000 })
 	tab._isSettings = true
 	self.SettingsTab = tab
 

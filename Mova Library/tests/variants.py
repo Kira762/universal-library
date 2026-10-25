@@ -64,7 +64,7 @@ CODE = """
   W.ResizeHandle.InputBegan:Fire(r, false)
   mock.Services.UserInputService.InputChanged:Fire(mock.input(Enum.UserInputType.MouseMovement, nil, Vector2.new(300, 250)), false)
   r.UserInputState = Enum.UserInputState.End r.Changed:Fire()
-  if Mova.IsMobile then assert(not W.DragBar.Visible, "drag bar stays off on mobile") end
+  assert(W.DragBar.Visible, "drag bar shows on every platform (Gen 2 does too)")
   Mova:SetTheme("Light")
   for _, n in ipairs(Mova:GetThemeNames()) do Mova:SetTheme(n) end
   W:Destroy() Mova:Destroy()

@@ -29,14 +29,15 @@ local l2 = T:CreateLabel({ Name = "same id", Icon = "rbxassetid://4483362458" })
 mock.flush()
 local uri = "rbxasset://custom/Mova/icons/4483362458.png"
 assert(mock.Files["Mova/icons/4483362458.png"] == PNG, "png written to the icon cache")
-assert(#requests == 1, "one download per asset id, got " .. #requests)
+local function downloadsOf(id) local n = 0 for _, u in ipairs(requests) do if tostring(u):find(id, 1, true) then n = n + 1 end end return n end
+assert(downloadsOf("4483362458") == 1, "one download per asset id, got " .. downloadsOf("4483362458"))
 assert(iconOf(l1.Card).Image == uri, "label filled in once the download landed: " .. tostring(iconOf(l1.Card).Image))
 assert(iconOf(l2.Card).Image == uri, "second label shares the same download")
 assert(mock.find(T.Button, function(x) return x.ClassName == "ImageLabel" and x.Image == uri end), "tab icon filled in")
 assert(W._titleMark and W._titleMark.Image == uri, "window icon filled in")
 
 local l3 = T:CreateLabel({ Name = "from disk", Icon = 4483362458 })
-assert(iconOf(l3.Card).Image == uri and #requests == 1, "later labels resolve straight from the cache")
+assert(iconOf(l3.Card).Image == uri and downloadsOf("4483362458") == 1, "later labels resolve straight from the cache")
 
 local bad = T:CreateLabel({ Name = "not png", Icon = 555 })
 mock.flush()
