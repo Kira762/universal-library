@@ -299,8 +299,12 @@ Mova.Themes.Dark = {
 	Success = C(72, 199, 142),
 	Warning = C(255, 184, 77),
 	Error = C(240, 84, 84),
-	Font = Enum.Font.GothamMedium,
-	TitleFont = Enum.Font.GothamBold,
+	Font = Enum.Font.GothamMedium,          -- fallback only (environments without Font.new)
+	TitleFont = Enum.Font.GothamBold,       -- fallback only
+	FontFamily = "rbxasset://fonts/families/GothamSSm.json", -- built-in family, weights via FontFace
+	Radius = 10,                            -- element corner radius
+	WindowRadius = 14,
+	StrokeTransparency = 0.45,              -- resting element outline
 }
 
 local function derive(base, overrides)
@@ -416,6 +420,12 @@ local ThemeOrder = { "Dark", "Light", "Midnight", "Ocean", "Ember", "Amethyst", 
 
 local CurrentTheme = shallowCopy(Mova.Themes.Dark)
 local ThemeRegistry = setmetatable({}, { __mode = "k" })
+local ThemeHooks = setmetatable({}, { __mode = "k" }) -- instance -> function() run after a theme change
+
+local function onTheme(instance, fn)
+	ThemeHooks[instance] = fn
+	fn()
+end
 
 local THEMED_PROPS = {
 	BackgroundColor3 = true, TextColor3 = true, ImageColor3 = true, Color = true,
@@ -460,10 +470,16 @@ local function tween(obj, props, time, style, dir)
 	return nil
 end
 
+local setFont -- defined with the font helpers below
+
 local function applyThemeToObject(obj, map, animate)
 	local colorProps = {}
 	for property, key in pairs(map) do
-		local value = CurrentTheme[key]
+		if property == "FontFace" and typeof(key) == "string" and key:sub(1, 1) == "@" then
+			setFont(obj, key:sub(2))
+			key = nil
+		end
+		local value = key and CurrentTheme[key]
 		if value ~= nil then
 			if typeof(value) == "Color3" and animate then
 				colorProps[property] = value
@@ -515,6 +531,7 @@ function Mova:SetTheme(theme, animate)
 	for obj, map in pairs(ThemeRegistry) do
 		applyThemeToObject(obj, map, animate)
 	end
+	for _, hook in pairs(ThemeHooks) do pcall(hook) end
 	for _, win in ipairs(Mova.Windows) do
 		if win._onThemeChanged then pcall(win._onThemeChanged, win) end
 	end
@@ -527,6 +544,47 @@ end
 -- A string value on a themed property (see THEMED_PROPS) binds it to that theme key.
 ---------------------------------------------------------------------------------------------------
 
+---------------------------------------------------------------------------------------------------
+-- Fonts: one built-in family (theme.FontFamily) rendered through FontFace weights.
+-- Falls back to Enum.Font on environments without Font.new.
+---------------------------------------------------------------------------------------------------
+
+local FontFaceSupported = (function()
+	local ok = pcall(function()
+		local f = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium)
+		local l = Instance.new("TextLabel")
+		l.FontFace = f
+		l:Destroy()
+	end)
+	return ok
+end)()
+
+local FontCache = {}
+local function fontFor(weight)
+	local family = CurrentTheme.FontFamily or "rbxasset://fonts/families/GothamSSm.json"
+	local key = family .. "|" .. weight
+	local f = FontCache[key]
+	if not f then
+		local ok, built = pcall(function() return Font.new(family, Enum.FontWeight[weight] or Enum.FontWeight.Medium) end)
+		f = ok and built or nil
+		FontCache[key] = f
+	end
+	return f
+end
+
+setFont = function(obj, weight)
+	weight = weight or "Medium"
+	if FontFaceSupported then
+		local f = fontFor(weight)
+		if f then
+			pcall(function() obj.FontFace = f end)
+			return
+		end
+	end
+	local heavy = weight == "SemiBold" or weight == "Bold"
+	pcall(function() obj.Font = heavy and CurrentTheme.TitleFont or CurrentTheme.Font end)
+end
+
 local function New(className, props, children)
 	local obj = Instance.new(className)
 	local themeMap = nil
@@ -536,8 +594,8 @@ local function New(className, props, children)
 		or className == "TextBox" or className == "ImageLabel" or className == "ImageButton" or className == "CanvasGroup" then
 		obj.BorderSizePixel = 0
 	end
-	if className == "TextLabel" or className == "TextButton" or className == "TextBox" then
-		obj.Font = CurrentTheme.Font
+	local isText = className == "TextLabel" or className == "TextButton" or className == "TextBox"
+	if isText then
 		obj.TextSize = 14
 		obj.BackgroundTransparency = 1
 		obj.TextColor3 = CurrentTheme.Text
@@ -562,9 +620,14 @@ local function New(className, props, children)
 		obj.MidImage = ""
 	end
 	local parent = nil
+	local weight = nil
 	for key, value in pairs(props) do
 		if key == "Parent" then
 			parent = value
+		elseif key == "Weight" then
+			weight = value
+		elseif key == "Font" and typeof(value) == "string" then
+			weight = (value == "TitleFont") and "SemiBold" or "Medium"
 		elseif key == "ThemeTag" then
 			themeMap = themeMap or {}
 			for p, k in pairs(value) do themeMap[p] = k end
@@ -577,9 +640,11 @@ local function New(className, props, children)
 			obj[key] = value
 		end
 	end
-	if className == "TextLabel" or className == "TextButton" or className == "TextBox" then
+	if isText then
 		themeMap = themeMap or {}
-		if props.Font == nil and themeMap.Font == nil then themeMap.Font = "Font" end
+		if typeof(props.Font) ~= "EnumItem" and themeMap.Font == nil then
+			themeMap.FontFace = "@" .. (weight or "Medium")
+		end
 		if props.TextColor3 == nil and themeMap.TextColor3 == nil then themeMap.TextColor3 = "Text" end
 	end
 	if themeMap then bindTheme(obj, themeMap) end
@@ -593,14 +658,14 @@ local function New(className, props, children)
 end
 
 local function Corner(radius, parent)
-	return New("UICorner", { CornerRadius = UDim.new(0, radius or 8), Parent = parent })
+	return New("UICorner", { CornerRadius = UDim.new(0, radius or CurrentTheme.Radius or 10), Parent = parent })
 end
 
 local function Stroke(parent, colorKey, thickness, transparency)
 	return New("UIStroke", {
 		Color = colorKey or "Stroke",
 		Thickness = thickness or 1,
-		Transparency = transparency or 0,
+		Transparency = transparency or CurrentTheme.StrokeTransparency or 0.45,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = parent,
 	})
@@ -645,6 +710,183 @@ local function hoverable(button, target, baseKey, hoverKey)
 	connect(button.MouseLeave, function()
 		tween(target, { BackgroundColor3 = themeValue(baseKey or "Surface") }, 0.15)
 	end)
+end
+
+---------------------------------------------------------------------------------------------------
+-- Motion + visual primitives
+-- Easing vocabulary (borrowed from Gen 2 / Fluent): Quint-out for state changes, Exponential-out
+-- for reveals, Back-out for things that should "land" (knobs, popups), Quint-in for exits.
+---------------------------------------------------------------------------------------------------
+
+local Motion = {
+	fast = 0.12,
+	base = 0.22,
+	slow = 0.4,
+	Quint = Enum.EasingStyle.Quint,
+	Expo = Enum.EasingStyle.Exponential,
+	Back = Enum.EasingStyle.Back,
+	Out = Enum.EasingDirection.Out,
+	In = Enum.EasingDirection.In,
+	InOut = Enum.EasingDirection.InOut,
+}
+
+-- UIShadow (2025+ engine) gives real soft shadows/glows without any image asset. Optional.
+local HasUIShadow = pcall(function()
+	local s = Instance.new("UIShadow")
+	s:Destroy()
+end)
+
+local function Shadow(parent, colorKey, blur, transparency)
+	if not HasUIShadow then return nil end
+	local ok, shadow = pcall(New, "UIShadow", {
+		Color = colorKey or "Shadow",
+		BlurRadius = UDim.new(0, blur or 24),
+		Transparency = transparency or 0.5,
+		ZIndex = -1,
+		Parent = parent,
+	})
+	return ok and shadow or nil
+end
+
+local function brighten(color, amount)
+	return Color3.new(
+		clamp(color.R + (1 - color.R) * amount, 0, 1),
+		clamp(color.G + (1 - color.G) * amount, 0, 1),
+		clamp(color.B + (1 - color.B) * amount, 0, 1)
+	)
+end
+
+-- Icons drawn from rotated frames so nothing depends on fonts having a glyph or on asset ids.
+local GLYPHS = {}
+local function Glyph(kind, parent, colorKey, size, thickness)
+	size = size or 16
+	thickness = thickness or 1.6
+	colorKey = colorKey or "TextDim"
+	local holder = New("Frame", {
+		Name = "Glyph", BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size),
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = parent,
+	})
+	local parts = {}
+	local function line(len, rot, cx, cy)
+		local f = New("Frame", {
+			BackgroundColor3 = colorKey, Size = UDim2.fromOffset(len, thickness), Rotation = rot,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, cx or 0, 0.5, cy or 0), Parent = holder,
+		})
+		Corner(math.ceil(thickness), f)
+		parts[#parts + 1] = f
+		return f
+	end
+	if kind == "close" then
+		line(size * 0.72, 45)
+		line(size * 0.72, -45)
+	elseif kind == "minus" then
+		line(size * 0.6, 0)
+	elseif kind == "plus" then
+		line(size * 0.6, 0)
+		line(size * 0.6, 90)
+	elseif kind == "chevron-down" or kind == "chevron-up" or kind == "chevron-right" or kind == "chevron-left" then
+		local len = size * 0.42
+		local off = len * 0.33
+		if kind == "chevron-down" then
+			line(len, 45, -off, -off * 0.5)
+			line(len, -45, off, -off * 0.5)
+		elseif kind == "chevron-up" then
+			line(len, -45, -off, off * 0.5)
+			line(len, 45, off, off * 0.5)
+		elseif kind == "chevron-right" then
+			line(len, -45, -off * 0.5, -off)
+			line(len, 45, -off * 0.5, off)
+		else
+			line(len, 45, off * 0.5, -off)
+			line(len, -45, off * 0.5, off)
+		end
+	elseif kind == "check" then
+		line(size * 0.3, 45, -size * 0.2, size * 0.08)
+		line(size * 0.55, -45, size * 0.08, -size * 0.02)
+	elseif kind == "search" then
+		local ring = New("Frame", {
+			BackgroundTransparency = 1, Size = UDim2.fromOffset(size * 0.55, size * 0.55),
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, -size * 0.08, 0.5, -size * 0.08), Parent = holder,
+		})
+		Corner(size, ring)
+		parts[#parts + 1] = New("UIStroke", { Color = colorKey, Thickness = thickness, Parent = ring })
+		line(size * 0.3, 45, size * 0.22, size * 0.22)
+	elseif kind == "resize" then
+		line(size * 0.8, -45, size * 0.1, size * 0.1)
+		line(size * 0.4, -45, size * 0.26, size * 0.26)
+	elseif kind == "dot" then
+		local d = New("Frame", { BackgroundColor3 = colorKey, Size = UDim2.fromOffset(size * 0.4, size * 0.4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = holder })
+		Corner(size, d)
+		parts[#parts + 1] = d
+	elseif kind == "grip" then
+		for i = -1, 1 do
+			local d = New("Frame", { BackgroundColor3 = colorKey, Size = UDim2.fromOffset(3, 3), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, i * 5), Parent = holder })
+			Corner(3, d)
+			parts[#parts + 1] = d
+		end
+	end
+	GLYPHS[holder] = parts
+	return holder
+end
+
+local function tintGlyph(holder, color, time)
+	local parts = GLYPHS[holder]
+	if not parts then return end
+	for _, part in ipairs(parts) do
+		if part:IsA("UIStroke") then
+			tween(part, { Color = color }, time or Motion.fast)
+		else
+			tween(part, { BackgroundColor3 = color }, time or Motion.fast)
+		end
+	end
+end
+
+local function rebindGlyph(holder, colorKey)
+	local parts = GLYPHS[holder]
+	if not parts then return end
+	for _, part in ipairs(parts) do
+		bindTheme(part, { [part:IsA("UIStroke") and "Color" or "BackgroundColor3"] = colorKey })
+	end
+end
+
+-- Hover: a text-coloured wash (so it reads on light and dark themes) + a brighter outline.
+local function hoverOverlay(parent)
+	local overlay = New("Frame", {
+		Name = "Hover", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = parent,
+	})
+	Corner(nil, overlay)
+	return overlay
+end
+
+local function hoverFx(trigger, overlay, stroke, opts)
+	opts = opts or {}
+	local strength = opts.strength or 0.95
+	connect(trigger.MouseEnter, function()
+		if opts.enabled and not opts.enabled() then return end
+		if overlay then tween(overlay, { BackgroundTransparency = strength }, Motion.base) end
+		if stroke then tween(stroke, { Transparency = math.max(0, (CurrentTheme.StrokeTransparency or 0.45) - 0.3) }, Motion.base) end
+	end)
+	connect(trigger.MouseLeave, function()
+		if overlay then tween(overlay, { BackgroundTransparency = 1 }, Motion.slow) end
+		if stroke then tween(stroke, { Transparency = CurrentTheme.StrokeTransparency or 0.45 }, Motion.slow) end
+	end)
+end
+
+-- Press: cards shrink 8px symmetrically (pages centre their children) and spring back.
+local function pressFx(card)
+	local size = card.Size
+	tween(card, { Size = UDim2.new(size.X.Scale, -8, size.Y.Scale, size.Y.Offset) }, 0.08, Motion.Quint, Motion.Out)
+	task.delay(0.09, function()
+		if card.Parent then
+			tween(card, { Size = UDim2.new(size.X.Scale, 0, size.Y.Scale, size.Y.Offset) }, 0.45, Motion.Expo, Motion.Out)
+		end
+	end)
+end
+
+-- Quick white flash used for button taps.
+local function flash(overlay)
+	tween(overlay, { BackgroundTransparency = 0.86 }, 0.05)
+	task.delay(0.06, function() tween(overlay, { BackgroundTransparency = 1 }, 0.35, Motion.Quint, Motion.Out) end)
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -975,25 +1217,31 @@ function Mova:Notify(props)
 	local holder = getNotifyHolder()
 	local accentKey = (kind == "Error" and "Error") or (kind == "Success" and "Success") or (kind == "Warning" and "Warning") or "Accent"
 
+	-- slot sits in the list layout; the card inside it is what slides so the layout never fights the tween
+	local slot = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = holder })
 	local card = New("Frame", {
 		BackgroundColor3 = "Surface",
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.fromOffset(340, 0),
 		ClipsDescendants = true,
 		BackgroundTransparency = 1,
-		Parent = holder,
+		Parent = slot,
 	})
-	Corner(10, card)
-	Stroke(card)
-	Padding(card, 10, 12, 10, 14)
+	Corner(12, card)
+	local cardStroke = Stroke(card)
+	cardStroke.Transparency = 1
+	Shadow(card, "Shadow", 32, 0.4)
+	Padding(card, 12, 14, 12, 18)
 
 	local bar = New("Frame", {
 		BackgroundColor3 = accentKey,
-		Size = UDim2.new(0, 3, 1, -12),
-		Position = UDim2.fromOffset(-14 + 4, 6),
+		Size = UDim2.new(0, 3, 1, -16),
+		Position = UDim2.fromOffset(-18 + 6, 8),
 		Parent = card,
 	})
 	Corner(2, bar)
+	Shadow(bar, accentKey, 10, 0.4)
 
 	local iconImage = resolveIcon(icon)
 	local textLeft = iconImage and 28 or 0
@@ -1013,14 +1261,14 @@ function Mova:Notify(props)
 	List(body, 3)
 	if title then
 		New("TextLabel", {
-			Text = tostring(title), Font = "TitleFont", TextSize = 14, TextColor3 = "Text",
+			Text = tostring(title), Weight = "SemiBold", TextSize = 14, TextColor3 = "Text",
 			Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 			LayoutOrder = 1, Parent = body,
 		})
 	end
 	if content and content ~= "" then
 		New("TextLabel", {
-			Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true,
+			Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 			LayoutOrder = 2, Parent = body,
@@ -1031,33 +1279,36 @@ function Mova:Notify(props)
 	local function close()
 		if closed then return end
 		closed = true
-		tween(card, { BackgroundTransparency = 1 }, 0.2)
+		tween(card, { BackgroundTransparency = 1, Position = UDim2.fromOffset(340, 0) }, 0.3, Motion.Quint, Motion.In)
+		tween(cardStroke, { Transparency = 1 }, 0.15)
 		for _, d in ipairs(card:GetDescendants()) do
 			pcall(function()
-				if d:IsA("TextLabel") or d:IsA("TextButton") then tween(d, { TextTransparency = 1 }, 0.2) end
-				if d:IsA("Frame") then tween(d, { BackgroundTransparency = 1 }, 0.2) end
-				if d:IsA("UIStroke") then tween(d, { Transparency = 1 }, 0.2) end
-				if d:IsA("ImageLabel") then tween(d, { ImageTransparency = 1 }, 0.2) end
+				if d:IsA("TextLabel") or d:IsA("TextButton") then tween(d, { TextTransparency = 1 }, 0.15) end
+				if d:IsA("ImageLabel") then tween(d, { ImageTransparency = 1 }, 0.15) end
 			end)
 		end
-		task.delay(0.25, function() card:Destroy() end)
+		task.delay(0.32, function() slot:Destroy() end)
 	end
 
 	if typeof(actions) == "table" and #actions > 0 then
-		local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3, Parent = body })
+		local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = body })
 		List(row, 6, Enum.FillDirection.Horizontal)
+		Padding(row, 4, 0, 0, 0)
 		for i, action in ipairs(actions) do
 			local label = prop(action, "OK", "Text", "Name", "text", "name")
 			local btn = New("TextButton", {
-				Text = label, TextSize = 12, Font = "TitleFont",
+				Text = label, TextSize = 12, Weight = "SemiBold",
 				BackgroundColor3 = i == 1 and "Accent" or "SurfaceHover",
 				TextColor3 = i == 1 and "OnAccent" or "Text",
 				BackgroundTransparency = 0,
-				Size = UDim2.fromOffset(math.max(56, textWidth(label, 12) + 20), 24),
+				Size = UDim2.fromOffset(math.max(60, textWidth(label, 12) + 24), 26),
 				LayoutOrder = i, Parent = row,
 			})
-			Corner(6, btn)
+			Corner(8, btn)
+			local btnHover = hoverOverlay(btn)
+			hoverFx(btn, btnHover, nil, { strength = 0.88 })
 			connect(btn.MouseButton1Click, function()
+				flash(btnHover)
 				safeCallback(prop(action, nil, "Callback", "callback", "Func"))
 				close()
 			end)
@@ -1065,23 +1316,29 @@ function Mova:Notify(props)
 	end
 
 	local closeBtn = New("TextButton", {
-		Text = "×", TextSize = 16, TextColor3 = "TextDim", Size = UDim2.fromOffset(18, 18),
-		Position = UDim2.new(1, 0, 0, -2), AnchorPoint = Vector2.new(1, 0), Parent = card,
+		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22),
+		Position = UDim2.new(1, 2, 0, -3), AnchorPoint = Vector2.new(1, 0), Parent = card,
 	})
+	Corner(6, closeBtn)
+	local closeGlyph = Glyph("close", closeBtn, "TextDim", 12, 1.5)
+	connect(closeBtn.MouseEnter, function() tween(closeBtn, { BackgroundTransparency = 0.92 }, Motion.fast) tintGlyph(closeGlyph, themeValue("Text")) end)
+	connect(closeBtn.MouseLeave, function() tween(closeBtn, { BackgroundTransparency = 1 }, Motion.slow) tintGlyph(closeGlyph, themeValue("TextDim"), Motion.slow) end)
 	connect(closeBtn.MouseButton1Click, close)
 
 	local progress = nil
 	if duration and duration > 0 then
 		progress = New("Frame", {
-			BackgroundColor3 = accentKey, BackgroundTransparency = 0.5,
-			Size = UDim2.new(1, 28, 0, 2), Position = UDim2.new(0, -14, 1, 8), AnchorPoint = Vector2.new(0, 1),
+			BackgroundColor3 = accentKey, BackgroundTransparency = 0.35,
+			Size = UDim2.new(1, 32, 0, 2), Position = UDim2.new(0, -14, 1, 12), AnchorPoint = Vector2.new(0, 1),
 			Parent = card,
 		})
 		tween(progress, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
 		task.delay(duration, close)
 	end
 
-	tween(card, { BackgroundTransparency = 0 }, 0.25)
+	-- slide in from the right edge
+	tween(card, { BackgroundTransparency = 0, Position = UDim2.fromOffset(0, 0) }, 0.45, Motion.Expo, Motion.Out)
+	tween(cardStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.45)
 	return { Close = close, Dismiss = close, Instance = card }
 end
 
@@ -1100,42 +1357,60 @@ function Mova:Dialog(props)
 		Text = "", BackgroundColor3 = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), AutoButtonColor = false,
 		Parent = Layers.dialog,
 	})
-	tween(dim, { BackgroundTransparency = 0.45 }, 0.2)
+	tween(dim, { BackgroundTransparency = 0.4 }, 0.3, Motion.Quint, Motion.Out)
 
 	local vp = viewportSize()
-	local width = math.min(360, vp.X - 32)
+	local width = math.min(380, vp.X - 32)
 	local card = New("Frame", {
 		BackgroundColor3 = "Surface",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 24),
 		Size = UDim2.fromOffset(width, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
 		Parent = dim,
 	})
-	Corner(12, card)
-	Stroke(card)
-	Padding(card, 16, 16, 16, 16)
+	local cardCorner = Corner(CurrentTheme.WindowRadius or 14, card)
+	local cardStroke = Stroke(card)
+	cardStroke.Transparency = 1
+	Shadow(card, "Shadow", 48, 0.35)
+	local cardScale = New("UIScale", { Scale = 0.92, Parent = card })
+	Padding(card, 18, 18, 18, 18)
 	List(card, 10)
+	-- pop in: Back Out scale, slide up, fade
+	tween(card, { BackgroundTransparency = 0, Position = UDim2.fromScale(0.5, 0.5) }, 0.4, Motion.Expo, Motion.Out)
+	tween(cardScale, { Scale = 1 }, 0.45, Motion.Back, Motion.Out)
+	tween(cardStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.4)
 	New("TextLabel", {
-		Text = tostring(title), Font = "TitleFont", TextSize = 16, Size = UDim2.new(1, 0, 0, 20),
+		Text = tostring(title), Weight = "SemiBold", TextSize = 16, Size = UDim2.new(1, 0, 0, 20),
 		TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = card,
 	})
 	New("TextLabel", {
-		Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true,
+		Text = tostring(content), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 		LayoutOrder = 2, Parent = card,
 	})
-	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = card })
+	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 3, Parent = card })
 	List(row, 8, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Right)
+	Padding(row, 4, 0, 0, 0)
 
 	local handle = {}
 	local closed = false
 	function handle:Close()
 		if closed then return end
 		closed = true
-		tween(dim, { BackgroundTransparency = 1 }, 0.15)
-		task.delay(0.16, function() dim:Destroy() end)
+		tween(dim, { BackgroundTransparency = 1 }, 0.25, Motion.Quint, Motion.In)
+		tween(card, { BackgroundTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, 16) }, 0.2, Motion.Quint, Motion.In)
+		tween(cardScale, { Scale = 0.94 }, 0.2, Motion.Quint, Motion.In)
+		tween(cardStroke, { Transparency = 1 }, 0.15)
+		for _, d in ipairs(card:GetDescendants()) do
+			pcall(function()
+				if d:IsA("TextLabel") or d:IsA("TextButton") then tween(d, { TextTransparency = 1 }, 0.15) end
+				if d:IsA("Frame") then tween(d, { BackgroundTransparency = 1 }, 0.15) end
+			end)
+		end
+		task.delay(0.26, function() dim:Destroy() end)
 	end
 
 	for i, b in ipairs(buttons) do
@@ -1144,11 +1419,15 @@ function Mova:Dialog(props)
 		local bg = (style == "Primary" or style == "primary") and "Accent" or ((style == "Danger" or style == "danger") and "Error" or "SurfaceHover")
 		local fg = (bg == "SurfaceHover") and "Text" or "OnAccent"
 		local btn = New("TextButton", {
-			Text = label, TextSize = 13, Font = "TitleFont", BackgroundColor3 = bg, TextColor3 = fg, BackgroundTransparency = 0,
-			Size = UDim2.fromOffset(math.max(72, textWidth(label, 13) + 28), 30), LayoutOrder = i, Parent = row,
+			Text = label, TextSize = 13, Weight = "SemiBold", BackgroundColor3 = bg, TextColor3 = fg, BackgroundTransparency = 0,
+			Size = UDim2.fromOffset(math.max(76, textWidth(label, 13) + 28), 30), LayoutOrder = i, Parent = row,
 		})
-		Corner(8, btn)
+		Corner(9, btn)
+		if bg == "SurfaceHover" then Stroke(btn) end
+		local btnHover = hoverOverlay(btn)
+		hoverFx(btn, btnHover, nil, { strength = 0.88 })
 		connect(btn.MouseButton1Click, function()
+			flash(btnHover)
 			handle:Close()
 			safeCallback(prop(b, nil, "Callback", "callback", "Func"))
 		end)
@@ -1216,8 +1495,10 @@ function Element:Lock(reason)
 	self.Locked = true
 	self._lockReason = reason
 	if self.Card then
-		tween(self.Card, { BackgroundTransparency = 0.4 }, 0.15)
-		if self.TitleLabel then tween(self.TitleLabel, { TextTransparency = 0.5 }, 0.15) end
+		tween(self.Card, { BackgroundTransparency = 0.4 }, Motion.base)
+		if self.Stroke then tween(self.Stroke, { Transparency = 0.85 }, Motion.base) end
+		if self.Hover then tween(self.Hover, { BackgroundTransparency = 1 }, Motion.base) end
+		if self.TitleLabel then tween(self.TitleLabel, { TextTransparency = 0.5 }, Motion.base) end
 		if self.DescLabel then
 			if reason and reason ~= "" then
 				self.DescLabel.Text = tostring(reason)
@@ -1234,8 +1515,9 @@ function Element:Unlock()
 	self.Locked = false
 	self._lockReason = nil
 	if self.Card then
-		tween(self.Card, { BackgroundTransparency = 0 }, 0.15)
-		if self.TitleLabel then tween(self.TitleLabel, { TextTransparency = 0 }, 0.15) end
+		tween(self.Card, { BackgroundTransparency = 0 }, Motion.base)
+		if self.Stroke then tween(self.Stroke, { Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end
+		if self.TitleLabel then tween(self.TitleLabel, { TextTransparency = 0 }, Motion.base) end
 		if self.DescLabel then
 			if self.Description and self.Description ~= "" then
 				self.DescLabel.Text = translate(tostring(self.Description))
@@ -1297,42 +1579,43 @@ local function buildCard(container, props, kind, controlWidth)
 	local card = New("Frame", {
 		Name = kind,
 		BackgroundColor3 = "Surface",
-		Size = UDim2.new(1, 0, 0, 40),
+		Size = UDim2.new(1, 0, 0, 44),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = container:_nextOrder(),
 		Parent = container.Holder,
 	})
-	Corner(8, card)
-	Stroke(card)
-	local sizeConstraint = New("UISizeConstraint", { MinSize = Vector2.new(0, 40), Parent = card })
+	Corner(nil, card)
+	local stroke = Stroke(card)
+	local overlay = hoverOverlay(card)
+	local sizeConstraint = New("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
 
 	local iconImage = resolveIcon(icon)
-	local leftPad = 12
+	local leftPad = 14
 	if iconImage then
 		New("ImageLabel", {
-			Image = iconImage, ImageColor3 = "Text", Size = UDim2.fromOffset(18, 18), Position = UDim2.fromOffset(12, 11), Parent = card,
+			Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(18, 18), Position = UDim2.fromOffset(14, 13), Parent = card,
 		})
-		leftPad = 38
+		leftPad = 40
 	end
 
 	local textHolder = New("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(leftPad, 0),
-		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - 12, 0, 0),
+		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - 14, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = card,
 	})
-	Padding(textHolder, 11, 0, 11, 0)
-	List(textHolder, 2)
+	Padding(textHolder, 13, 0, 13, 0)
+	List(textHolder, 3)
 
 	local title = New("TextLabel", {
-		TextSize = 14, TextColor3 = "Text", Size = UDim2.new(1, 0, 0, 18),
+		TextSize = 14, Weight = "Medium", TextColor3 = "Text", Size = UDim2.new(1, 0, 0, 18),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1, Parent = textHolder,
 	})
 	bindText(title, tostring(name))
 
 	local descLabel = New("TextLabel", {
-		TextSize = 12, TextColor3 = "TextDim", TextWrapped = true,
+		TextSize = 12, Weight = "Regular", TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 		LayoutOrder = 2, Visible = false, Parent = textHolder,
@@ -1345,8 +1628,9 @@ local function buildCard(container, props, kind, controlWidth)
 	local control = New("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 0),
-		Size = UDim2.fromOffset(controlWidth or 0, 40),
+		Position = UDim2.new(1, -14, 0, 0),
+		Size = UDim2.fromOffset(controlWidth or 0, 44),
+		ZIndex = 2,
 		Parent = card,
 	})
 
@@ -1370,6 +1654,8 @@ local function buildCard(container, props, kind, controlWidth)
 		DescLabel = descLabel,
 		Control = control,
 		Blocker = blocker,
+		Stroke = stroke,
+		Hover = overlay,
 		SizeConstraint = sizeConstraint,
 		Visible = true,
 		Locked = false,
@@ -1378,6 +1664,7 @@ local function buildCard(container, props, kind, controlWidth)
 
 	container.Elements[#container.Elements + 1] = element
 	element.Window._allElements[#element.Window._allElements + 1] = element
+	hoverFx(card, overlay, stroke, { enabled = function() return not element.Locked end })
 
 	if prop(props, false, "Locked", "locked", "Disabled") then
 		element:Lock(prop(props, nil, "LockReason", "lockReason"))
@@ -1404,17 +1691,25 @@ end
 
 function Container:CreateButton(props, callback)
 	if typeof(props) == "string" then props = { Name = props, Callback = callback } end
-	local el = buildCard(self, props, "Button", 0)
-	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = el.Card })
-	hoverable(interact, el.Card)
-	local arrow = New("TextLabel", {
-		Text = "›", TextSize = 20, TextColor3 = "TextDim", Size = UDim2.fromOffset(16, 40),
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 0), Parent = el.Card,
-	})
+	local el = buildCard(self, props, "Button", 24)
+	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
+	local arrowHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = el.Control })
+	local arrow = Glyph("chevron-right", arrowHolder, "TextDim", 14, 1.6)
+	connect(interact.MouseEnter, function()
+		if el.Locked then return end
+		tween(arrow, { Position = UDim2.new(0.5, 3, 0.5, 0) }, Motion.base, Motion.Back, Motion.Out)
+		tintGlyph(arrow, themeValue("Text"))
+	end)
+	connect(interact.MouseLeave, function()
+		tween(arrow, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Motion.slow, Motion.Quint, Motion.Out)
+		tintGlyph(arrow, themeValue("TextDim"), Motion.slow)
+	end)
 	connect(interact.MouseButton1Click, function()
 		if el.Locked then return end
-		tween(arrow, { TextColor3 = themeValue("Accent") }, 0.08)
-		task.delay(0.15, function() tween(arrow, { TextColor3 = themeValue("TextDim") }, 0.25) end)
+		flash(el.Hover)
+		pressFx(el.Card)
+		tintGlyph(arrow, themeValue("Accent"), 0.05)
+		task.delay(0.25, function() tintGlyph(arrow, themeValue("TextDim"), Motion.slow) end)
 		safeCallback(el.Callback, el)
 	end)
 	function el:Press() if not self.Locked then safeCallback(self.Callback, self) end end
@@ -1430,26 +1725,36 @@ function Container:CreateToggle(props)
 	el.Value = prop(props, false, "CurrentValue", "Default", "Value", "default", "value", "Enabled") and true or false
 
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", Size = UDim2.fromOffset(40, 22), AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0, 20), Parent = el.Control,
+		BackgroundColor3 = "Track", Size = UDim2.fromOffset(42, 22), AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
 	Corner(11, track)
+	local trackStroke = Stroke(track, "Stroke", 1, 0.6)
 	local knob = New("Frame", {
 		BackgroundColor3 = "Knob", Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 3, 0.5, 0), Parent = track,
+		Position = UDim2.new(0, 3, 0.5, 0), ZIndex = 2, Parent = track,
 	})
 	Corner(8, knob)
-	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = el.Card })
-	hoverable(interact, el.Card)
+	local glow = Shadow(knob, "Accent", 10, 1)
+	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = el.Card })
 
 	local function render(animate)
-		local t = animate and 0.18 or 0
+		local t = animate and Motion.base or 0
 		if el.Value then
 			tween(track, { BackgroundColor3 = themeValue("Accent") }, t)
-			tween(knob, { Position = UDim2.new(1, -19, 0.5, 0), BackgroundColor3 = themeValue("OnAccent") }, t, Enum.EasingStyle.Back)
+			tween(trackStroke, { Transparency = 1 }, t)
+			tween(knob, { Position = UDim2.new(1, -19, 0.5, 0), BackgroundColor3 = themeValue("OnAccent") }, animate and 0.32 or 0, Motion.Back, Motion.Out)
+			if glow then tween(glow, { Transparency = 0.45 }, t) end
 		else
 			tween(track, { BackgroundColor3 = themeValue("Track") }, t)
-			tween(knob, { Position = UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = themeValue("Knob") }, t)
+			tween(trackStroke, { Transparency = 0.6 }, t)
+			tween(knob, { Position = UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = themeValue("Knob") }, animate and 0.32 or 0, Motion.Back, Motion.Out)
+			if glow then tween(glow, { Transparency = 1 }, t) end
+		end
+		if animate then
+			-- iOS style squash while the knob travels
+			tween(knob, { Size = UDim2.fromOffset(20, 16) }, 0.1)
+			task.delay(0.1, function() tween(knob, { Size = UDim2.fromOffset(16, 16) }, 0.25, Motion.Back, Motion.Out) end)
 		end
 		-- keep registry in sync so theme swaps land on the right colour
 		ThemeRegistry[track] = { BackgroundColor3 = el.Value and "Accent" or "Track" }
@@ -1475,6 +1780,7 @@ function Container:CreateToggle(props)
 
 	connect(interact.MouseButton1Click, function()
 		if el.Locked then return end
+		pressFx(el.Card)
 		el:Set(not el.Value)
 	end)
 
@@ -1525,23 +1831,25 @@ function Container:CreateSlider(props)
 	el.Value = clamp(prop(props, min, "CurrentValue", "Default", "Value", "default", "value"), min, max)
 
 	-- make room for the track under the text
-	el.Card.Size = UDim2.new(1, 0, 0, 58)
-	el.SizeConstraint.MinSize = Vector2.new(0, 58)
+	el.Card.Size = UDim2.new(1, 0, 0, 64)
+	el.SizeConstraint.MinSize = Vector2.new(0, 64)
 	local textHolder = el.TitleLabel.Parent
-	textHolder.Size = UDim2.new(1, -100 - 24, 0, 0)
+	textHolder.Size = UDim2.new(1, -100 - 28, 0, 0)
 
 	local valueBox = New("TextBox", {
-		Text = "", TextSize = 13, TextColor3 = "Text", Font = "TitleFont",
+		Text = "", TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
 		BackgroundColor3 = "Field", BackgroundTransparency = 0,
-		Size = UDim2.fromOffset(72, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 8),
-		TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, Parent = el.Card,
+		Size = UDim2.fromOffset(64, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 10),
+		TextXAlignment = Enum.TextXAlignment.Center, ClearTextOnFocus = false, ZIndex = 2, Parent = el.Card,
 	})
-	Corner(6, valueBox)
-	Stroke(valueBox)
+	Corner(7, valueBox)
+	local valueStroke = Stroke(valueBox)
+	connect(valueBox.Focused, function() tween(valueStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+	connect(valueBox.FocusLost, function() tween(valueStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 
 	local trackHolder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -24, 0, 20), AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -6), Parent = el.Card,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -28, 0, 22), AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 14, 1, -6), ZIndex = 2, Parent = el.Card,
 	})
 	local track = New("Frame", {
 		BackgroundColor3 = "Track", Size = UDim2.new(1, 0, 0, 6), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = trackHolder,
@@ -1549,13 +1857,16 @@ function Container:CreateSlider(props)
 	Corner(3, track)
 	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), Parent = track })
 	Corner(3, fill)
+	local fillGradient = New("UIGradient", { Parent = fill })
+	onTheme(fillGradient, function() fillGradient.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
 	local knob = New("Frame", {
 		BackgroundColor3 = "OnAccent", Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0), Parent = track,
+		Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 2, Parent = track,
 	})
 	Corner(7, knob)
-	Stroke(knob, "Accent", 2)
-	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 14, 1, 0), Position = UDim2.fromOffset(-7, 0), ZIndex = 2, Parent = trackHolder })
+	local knobRing = Stroke(knob, "Accent", 2, 0)
+	local knobGlow = Shadow(knob, "Accent", 10, 1)
+	local interact = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 14, 1, 0), Position = UDim2.fromOffset(-7, 0), ZIndex = 3, Parent = trackHolder })
 
 	local function snap(v)
 		v = clamp(v, min, max)
@@ -1563,13 +1874,22 @@ function Container:CreateSlider(props)
 		return clamp(round(v, decimals), min, max)
 	end
 
+	local dragging = false
 	local function render(animate)
 		local alpha = (max > min) and ((el.Value - min) / (max - min)) or 0
-		local t = animate and 0.12 or 0
-		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, t)
-		tween(knob, { Position = UDim2.new(alpha, 0, 0.5, 0) }, t)
+		local t = (not animate) and 0 or (dragging and 0.05 or Motion.base)
+		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, t, dragging and Enum.EasingStyle.Linear or Motion.Quint)
+		tween(knob, { Position = UDim2.new(alpha, 0, 0.5, 0) }, t, dragging and Enum.EasingStyle.Linear or Motion.Quint)
 		valueBox.Text = prefix .. formatNumber(el.Value, decimals) .. suffix
 	end
+	local function setKnobState(state) -- "idle" | "hover" | "drag"
+		local size = state == "drag" and 18 or state == "hover" and 16 or 14
+		tween(knob, { Size = UDim2.fromOffset(size, size) }, Motion.base, Motion.Back, Motion.Out)
+		tween(track, { Size = UDim2.new(1, 0, 0, state == "idle" and 6 or 8) }, Motion.base)
+		if knobGlow then tween(knobGlow, { Transparency = state == "drag" and 0.4 or 1 }, Motion.base) end
+	end
+	connect(interact.MouseEnter, function() if not dragging and not el.Locked then setKnobState("hover") end end)
+	connect(interact.MouseLeave, function() if not dragging then setKnobState("idle") end end)
 
 	function el:Set(value, silent)
 		value = tonumber(value)
@@ -1594,7 +1914,6 @@ function Container:CreateSlider(props)
 	el.SetMax = function(self, m) return self:SetRange(min, m) end
 	el.SetMin = function(self, m) return self:SetRange(m, max) end
 
-	local dragging = false
 	local function fromInput(pos)
 		local p, s = track.AbsolutePosition, track.AbsoluteSize
 		if s.X <= 0 then return end
@@ -1605,9 +1924,13 @@ function Container:CreateSlider(props)
 		if el.Locked then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			setKnobState("drag")
 			fromInput(input.Position)
 			connect(input.Changed, function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					setKnobState("idle")
+				end
 			end)
 		end
 	end)
@@ -1641,13 +1964,13 @@ function Container:CreateInput(props)
 	local maxLength = prop(props, nil, "MaxLength", "maxLength")
 
 	local field = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 26), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 20), Parent = el.Control,
+		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
-	Corner(6, field)
+	Corner(8, field)
 	local stroke = Stroke(field)
 	local box = New("TextBox", {
 		Text = el.Value, PlaceholderText = placeholder, PlaceholderColor3 = "Placeholder", TextSize = 13,
-		Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), ClipsDescendants = true,
+		Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), ClipsDescendants = true,
 		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, Parent = field,
 	})
 
@@ -1673,10 +1996,10 @@ function Container:CreateInput(props)
 	function el:SetPlaceholder(t) box.PlaceholderText = t return self end
 
 	connect(box.Focused, function()
-		tween(stroke, { Color = themeValue("Accent") }, 0.15)
+		tween(stroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
 	end)
 	connect(box.FocusLost, function(enterPressed)
-		tween(stroke, { Color = themeValue("Stroke") }, 0.15)
+		tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
 		if el.Locked then box.Text = el.Value return end
 		el:Set(box.Text, not finished)
 		if clearOnFocus then
@@ -1723,19 +2046,19 @@ function Container:CreateDropdown(props)
 	end
 
 	local field = New("TextButton", {
-		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 26),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 20), Parent = el.Control,
+		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
-	Corner(6, field)
+	Corner(8, field)
 	local stroke = Stroke(field)
+	local fieldHover = hoverOverlay(field)
+	hoverFx(field, fieldHover, nil, { strength = 0.96, enabled = function() return not el.Locked end })
 	local valueLabel = New("TextLabel", {
-		Text = "", TextSize = 13, TextColor3 = "Text", Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(8, 0),
+		Text = "", TextSize = 13, TextColor3 = "Text", Size = UDim2.new(1, -34, 1, 0), Position = UDim2.fromOffset(10, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = field,
 	})
-	local chevron = New("TextLabel", {
-		Text = "⌄", TextSize = 16, TextColor3 = "TextDim", Size = UDim2.fromOffset(18, 26), AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -4, 0, -2), Parent = field,
-	})
+	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 28), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -4, 0, 0), Parent = field })
+	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 14, 1.6)
 
 	local function display()
 		if el.Multi then
@@ -1777,21 +2100,20 @@ function Container:CreateDropdown(props)
 				local selected
 				if el.Multi then selected = indexOf(el.Value, option) ~= nil else selected = el.Value == option end
 				local row = New("TextButton", {
-					Text = "", BackgroundColor3 = selected and "SurfaceHover" or "Surface", BackgroundTransparency = 0,
-					Size = UDim2.new(1, 0, 0, 28), LayoutOrder = i, Parent = scroll,
+					Text = "", BackgroundColor3 = "Accent", BackgroundTransparency = selected and 0.86 or 1,
+					Size = UDim2.new(1, 0, 0, 30), LayoutOrder = i, Parent = scroll,
 				})
-				Corner(6, row)
+				Corner(7, row)
 				New("TextLabel", {
-					Text = text, TextSize = 13, TextColor3 = selected and "Accent" or "Text", Size = UDim2.new(1, -36, 1, 0),
+					Text = text, TextSize = 13, Weight = selected and "SemiBold" or "Medium", TextColor3 = selected and "Accent" or "Text", Size = UDim2.new(1, -40, 1, 0),
 					Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 				})
 				if selected then
-					New("TextLabel", {
-						Text = "✓", TextSize = 14, TextColor3 = "Accent", Size = UDim2.fromOffset(20, 28), AnchorPoint = Vector2.new(1, 0),
-						Position = UDim2.new(1, -6, 0, 0), Parent = row,
-					})
+					local tick = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Parent = row })
+					Glyph("check", tick, "Accent", 14, 1.8)
 				end
-				hoverable(row, row, selected and "SurfaceHover" or "Surface", "SurfaceHover")
+				local rowHover = hoverOverlay(row)
+				hoverFx(row, rowHover, nil, { strength = 0.94 })
 				connect(row.MouseButton1Click, function()
 					if el.Multi then
 						local idx = indexOf(el.Value, option)
@@ -1818,55 +2140,64 @@ function Container:CreateDropdown(props)
 		end
 		local showSearch = listSearch ~= nil
 		local visible = math.min(count, maxVisible)
-		local height = visible * 28 + math.max(0, visible - 1) * 4 + 12 + (showSearch and 34 or 0)
-		if count == 0 then height = 40 + (showSearch and 34 or 0) end
-		positionPopup(listFrame, field, math.max(field.AbsoluteSize.X, 160), height)
+		local height = visible * 30 + math.max(0, visible - 1) * 3 + 12 + (showSearch and 36 or 0)
+		if count == 0 then height = 40 + (showSearch and 36 or 0) end
+		positionPopup(listFrame, field, math.max(field.AbsoluteSize.X, 180), height)
 	end
 
 	local function close()
 		if not open then return end
 		open = false
-		tween(chevron, { Rotation = 0 }, 0.15)
-		tween(stroke, { Color = themeValue("Stroke") }, 0.15)
+		tween(chevron, { Rotation = 0 }, Motion.base, Motion.Back, Motion.Out)
+		tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
 		if listFrame then
 			local f = listFrame
 			listFrame, listScroll, listSearch = nil, nil, nil
 			rows = {}
-			f:Destroy()
+			tween(f, { Size = UDim2.fromOffset(f.Size.X.Offset, 0), BackgroundTransparency = 1 }, Motion.fast, Motion.Quint, Motion.In)
+			task.delay(Motion.fast + 0.02, function() f:Destroy() end)
 		end
 	end
 
 	local function openList()
 		if el.Locked or open then return end
 		open = true
-		tween(chevron, { Rotation = 180 }, 0.15)
-		tween(stroke, { Color = themeValue("Accent") }, 0.15)
+		tween(chevron, { Rotation = 180 }, Motion.base, Motion.Back, Motion.Out)
+		tween(stroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
 		local root = getRoot()
 		listFrame = New("Frame", {
-			BackgroundColor3 = "Surface", Size = UDim2.fromOffset(160, 40), ZIndex = 60, Parent = Layers.popup,
+			BackgroundColor3 = "Surface", Size = UDim2.fromOffset(160, 40), ZIndex = 60, ClipsDescendants = true, Parent = Layers.popup,
 		})
-		Corner(8, listFrame)
+		Corner(nil, listFrame)
 		Stroke(listFrame)
+		Shadow(listFrame, "Shadow", 28, 0.4)
 		Padding(listFrame, 6, 6, 6, 6)
 		local useSearch = searchable
 		if useSearch == nil then useSearch = #el.Options > maxVisible end
 		if useSearch then
-			local sf = New("Frame", { BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 28), ZIndex = 61, Parent = listFrame })
-			Corner(6, sf)
-			Stroke(sf)
+			local sf = New("Frame", { BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 30), ZIndex = 61, Parent = listFrame })
+			Corner(8, sf)
+			local sfStroke = Stroke(sf)
 			local sb = New("TextBox", {
 				Text = "", PlaceholderText = "Search...", PlaceholderColor3 = "Placeholder", TextSize = 13, ZIndex = 62,
-				Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = sf,
+				Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = sf,
 			})
+			connect(sb.Focused, function() tween(sfStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+			connect(sb.FocusLost, function() tween(sfStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 			listSearch = sb
 			connect(sb:GetPropertyChangedSignal("Text"), function() rebuildRows(sb.Text) end)
 		end
 		local scroll = New("ScrollingFrame", {
-			Size = UDim2.new(1, 0, 1, useSearch and -34 or 0), Position = UDim2.fromOffset(0, useSearch and 34 or 0), ZIndex = 61, Parent = listFrame,
+			Size = UDim2.new(1, 0, 1, useSearch and -36 or 0), Position = UDim2.fromOffset(0, useSearch and 36 or 0), ZIndex = 61, Parent = listFrame,
 		})
-		List(scroll, 4)
+		List(scroll, 3)
 		listScroll = scroll
 		rebuildRows("")
+		-- grow in from the field
+		local target = listFrame.Size
+		listFrame.Size = UDim2.fromOffset(target.X.Offset, 0)
+		listFrame.BackgroundTransparency = 1
+		tween(listFrame, { Size = target, BackgroundTransparency = 0 }, 0.3, Motion.Expo, Motion.Out)
 		openPopup(listFrame, field, close)
 	end
 
@@ -1944,13 +2275,15 @@ function Container:_createKeybind(props, attachedToggle)
 	el._attached = attachedToggle
 
 	local field = New("TextButton", {
-		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 26),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 20), Parent = el.Control,
+		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
-	Corner(6, field)
+	Corner(8, field)
 	local stroke = Stroke(field)
+	local fieldHover = hoverOverlay(field)
+	hoverFx(field, fieldHover, nil, { strength = 0.96, enabled = function() return not el.Locked end })
 	local label = New("TextLabel", {
-		Text = keyToString(el.Value), TextSize = 13, TextColor3 = "Text", Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0),
+		Text = keyToString(el.Value), TextSize = 12, Weight = "SemiBold", TextColor3 = "Text", Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = field,
 	})
 
@@ -1990,7 +2323,7 @@ function Container:_createKeybind(props, attachedToggle)
 		if el.Locked then return end
 		listening = not listening
 		KeybindListening = listening
-		tween(stroke, { Color = listening and themeValue("Accent") or themeValue("Stroke") }, 0.15)
+		tween(stroke, { Color = listening and themeValue("Accent") or themeValue("Stroke"), Transparency = listening and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
 		render()
 	end)
 
@@ -2010,7 +2343,7 @@ function Container:_createKeybind(props, attachedToggle)
 			if key then
 				listening = false
 				KeybindListening = false
-				tween(stroke, { Color = themeValue("Stroke") }, 0.15)
+				tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
 				if key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 					el:Set(nil)
 				elseif not indexOf(el.Blacklist, key.Name) then
@@ -2064,12 +2397,18 @@ function Container:CreateColorPicker(props)
 	local useAlpha = el.Alpha ~= nil
 	if useAlpha then el.Alpha = clamp(el.Alpha, 0, 1) end
 
-	local swatch = New("TextButton", {
-		Text = "", BackgroundColor3 = el.Value, BackgroundTransparency = 0, Size = UDim2.fromOffset(44, 24),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 20), Parent = el.Control,
+	local swatchHolder = New("Frame", {
+		BackgroundColor3 = "Field", Size = UDim2.fromOffset(52, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0, 22), Parent = el.Control,
 	})
-	Corner(6, swatch)
-	Stroke(swatch)
+	Corner(8, swatchHolder)
+	local swatchStroke = Stroke(swatchHolder)
+	local swatch = New("TextButton", {
+		Text = "", BackgroundColor3 = el.Value, BackgroundTransparency = 0, Size = UDim2.new(1, -8, 1, -8),
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = swatchHolder,
+	})
+	Corner(5, swatch)
+	local swatchHover = hoverOverlay(swatchHolder)
+	hoverFx(swatch, swatchHover, swatchStroke, { strength = 0.96, enabled = function() return not el.Locked end })
 
 	local h, s, v = el.Value:ToHSV()
 	local open = false
@@ -2112,7 +2451,14 @@ function Container:CreateColorPicker(props)
 	local function closePanel()
 		if not open then return end
 		open = false
-		if panel then local p = panel panel = nil panelRefresh = nil p:Destroy() end
+		tween(swatchStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+		if panel then
+			local p = panel
+			panel = nil
+			panelRefresh = nil
+			tween(p, { Size = UDim2.fromOffset(p.Size.X.Offset, 0), BackgroundTransparency = 1 }, Motion.fast, Motion.Quint, Motion.In)
+			task.delay(Motion.fast + 0.02, function() p:Destroy() end)
+		end
 	end
 
 	local function openPanel()
@@ -2120,11 +2466,16 @@ function Container:CreateColorPicker(props)
 		open = true
 		local root = getRoot()
 		local width, height = 230, useAlpha and 258 or 232
-		panel = New("Frame", { BackgroundColor3 = "Surface", ZIndex = 60, Parent = Layers.popup })
-		Corner(10, panel)
+		tween(swatchStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
+		panel = New("Frame", { BackgroundColor3 = "Surface", ZIndex = 60, ClipsDescendants = true, Parent = Layers.popup })
+		Corner(nil, panel)
 		Stroke(panel)
+		Shadow(panel, "Shadow", 28, 0.4)
 		Padding(panel, 10, 10, 10, 10)
-		positionPopup(panel, swatch, width, height)
+		positionPopup(panel, swatchHolder, width, height)
+		panel.Size = UDim2.fromOffset(width, 0)
+		panel.BackgroundTransparency = 1
+		tween(panel, { Size = UDim2.fromOffset(width, height), BackgroundTransparency = 0 }, 0.3, Motion.Expo, Motion.Out)
 
 		-- saturation / value square
 		local sv = New("TextButton", {
@@ -2266,8 +2617,9 @@ end
 function Container:CreateParagraph(props)
 	props = props or {}
 	local el = buildCard(self, { Name = prop(props, "Paragraph", "Title", "Name", "title", "name"), Description = prop(props, "", "Content", "Description", "content", "Text") }, "Paragraph", 0)
-	el.TitleLabel.Font = CurrentTheme.TitleFont
-	ThemeRegistry[el.TitleLabel] = { TextColor3 = "Text", Font = "TitleFont" }
+	setFont(el.TitleLabel, "SemiBold")
+	bindTheme(el.TitleLabel, { FontFace = "@SemiBold" })
+	el.DescLabel.TextSize = 13
 	function el:Set(newProps)
 		if typeof(newProps) == "string" then return self:SetDescription(newProps) end
 		if newProps.Title or newProps.Name then self:SetTitle(newProps.Title or newProps.Name) end
@@ -2282,17 +2634,19 @@ function Container:CreateDivider(props)
 	if typeof(props) == "string" then props = { Name = props } end
 	props = props or {}
 	local text = prop(props, nil, "Name", "Text", "name", "text")
-	local holder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, text and 20 or 10), LayoutOrder = self:_nextOrder(), Parent = self.Holder })
+	local holder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, text and 22 or 12), LayoutOrder = self:_nextOrder(), Parent = self.Holder })
 	local el = setmetatable({ Type = "Divider", Card = holder, Container = self, Window = self.Window, Visible = true, _cleanup = {} }, Element)
 	if text then
 		local label = New("TextLabel", {
-			Text = "", TextSize = 11, TextColor3 = "TextDim", Font = "TitleFont", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(textWidth(text, 11, CurrentTheme.TitleFont) + 16, 20), BackgroundColor3 = "Background", BackgroundTransparency = 0, ZIndex = 2, Parent = holder,
+			Text = "", TextSize = 11, Weight = "SemiBold", TextColor3 = "TextDim", Position = UDim2.fromOffset(4, 0),
+			Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Parent = holder,
 		})
 		bindText(label, tostring(text):upper())
 		el.TitleLabel = label
+		local line = New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -textWidth(tostring(text):upper(), 11) - 20, 0, 1), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = holder })
+	else
+		New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = holder })
 	end
-	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Parent = holder })
 	self.Elements[#self.Elements + 1] = el
 	return el
 end
@@ -2306,22 +2660,24 @@ function Container:CreateProgress(props)
 	local showValue = prop(props, true, "ShowValue", "showValue")
 	local suffix = prop(props, "%", "Suffix", "suffix")
 
-	el.Card.Size = UDim2.new(1, 0, 0, 54)
-	el.SizeConstraint.MinSize = Vector2.new(0, 54)
+	el.Card.Size = UDim2.new(1, 0, 0, 58)
+	el.SizeConstraint.MinSize = Vector2.new(0, 58)
 	local valueLabel = New("TextLabel", {
-		Text = "", TextSize = 12, TextColor3 = "TextDim", Font = "TitleFont", Size = UDim2.fromOffset(60, 20), AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 10), TextXAlignment = Enum.TextXAlignment.Right, Visible = showValue, Parent = el.Card,
+		Text = "", TextSize = 12, TextColor3 = "TextDim", Weight = "SemiBold", Size = UDim2.fromOffset(60, 20), AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -14, 0, 12), TextXAlignment = Enum.TextXAlignment.Right, Visible = showValue, Parent = el.Card,
 	})
-	local track = New("Frame", { BackgroundColor3 = "Track", Size = UDim2.new(1, -24, 0, 6), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -10), Parent = el.Card })
+	local track = New("Frame", { BackgroundColor3 = "Track", Size = UDim2.new(1, -28, 0, 6), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -12), Parent = el.Card })
 	Corner(3, track)
 	local fill = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.new(0, 0, 1, 0), Parent = track })
 	Corner(3, fill)
+	local grad = New("UIGradient", { Parent = fill })
+	onTheme(grad, function() grad.Color = ColorSequence.new(themeValue("AccentHover"), themeValue("Accent")) end)
 
 	function el:Set(value, silent)
 		value = clamp(tonumber(value) or self.Min, self.Min, self.Max)
 		self.Value = value
 		local alpha = (self.Max > self.Min) and (value - self.Min) / (self.Max - self.Min) or 0
-		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, 0.25)
+		tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, Motion.slow, Motion.Expo, Motion.Out)
 		valueLabel.Text = formatNumber(alpha * 100, 0) .. suffix
 		if suffix ~= "%" then valueLabel.Text = formatNumber(value, 0) .. suffix end
 		if not silent then safeCallback(self.Callback, value, self) end
@@ -2349,21 +2705,23 @@ function Container:CreateSection(props)
 		Name = "Section", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = self:_nextOrder(), Parent = self.Holder,
 	})
-	local header = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), Parent = frame })
+	local header = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), Parent = frame })
 	local title = New("TextLabel", {
-		TextSize = 12, TextColor3 = "TextDim", Font = "TitleFont", Size = UDim2.new(1, -24, 1, 0), Position = UDim2.fromOffset(2, 0),
+		TextSize = 11, TextColor3 = "TextDim", Weight = "SemiBold", Size = UDim2.new(1, -28, 1, 0), Position = UDim2.fromOffset(4, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, Parent = header,
 	})
 	bindText(title, tostring(name):upper())
-	local chevron = New("TextLabel", {
-		Text = "⌄", TextSize = 14, TextColor3 = "TextDim", Size = UDim2.fromOffset(16, 24), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -2, 0, -2),
-		Visible = collapsible, Parent = header,
-	})
+	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Visible = collapsible, Parent = header })
+	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 13, 1.5)
+	if collapsible then
+		connect(header.MouseEnter, function() tween(title, { TextColor3 = themeValue("Text") }, Motion.fast) tintGlyph(chevron, themeValue("Text")) end)
+		connect(header.MouseLeave, function() tween(title, { TextColor3 = themeValue("TextDim") }, Motion.slow) tintGlyph(chevron, themeValue("TextDim"), Motion.slow) end)
+	end
 	local holder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, 26),
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, 28),
 		ClipsDescendants = true, Parent = frame,
 	})
-	List(holder, 6)
+	local holderLayout = List(holder, 6, nil, Enum.HorizontalAlignment.Center)
 
 	local section = setmetatable({
 		Type = "Section", Name = name, Frame = frame, Holder = holder, Header = header, TitleLabel = title,
@@ -2372,16 +2730,37 @@ function Container:CreateSection(props)
 	self.Elements[#self.Elements + 1] = section
 	self.Window._allSections[#self.Window._allSections + 1] = section
 
-	function section:SetCollapsed(state)
-		self.Collapsed = state and true or false
-		holder.Visible = not self.Collapsed
-		if self.Collapsed then
+	local collapseToken = 0
+	function section:SetCollapsed(state, instant)
+		state = state and true or false
+		if state == self.Collapsed then return self end
+		self.Collapsed = state
+		collapseToken = collapseToken + 1
+		local token = collapseToken
+		local ok, contentHeight = pcall(function() return holderLayout.AbsoluteContentSize.Y end)
+		contentHeight = (ok and contentHeight) or holder.AbsoluteSize.Y
+		tween(chevron, { Rotation = state and -90 or 0 }, Motion.base, Motion.Back, Motion.Out)
+		if state then
 			holder.AutomaticSize = Enum.AutomaticSize.None
-			holder.Size = UDim2.new(1, 0, 0, 0)
+			holder.Size = UDim2.new(1, 0, 0, contentHeight)
+			if instant then
+				holder.Size = UDim2.new(1, 0, 0, 0)
+				holder.Visible = false
+			else
+				tween(holder, { Size = UDim2.new(1, 0, 0, 0) }, 0.3, Motion.Expo, Motion.Out)
+				task.delay(0.3, function() if token == collapseToken and self.Collapsed then holder.Visible = false end end)
+			end
 		else
-			holder.AutomaticSize = Enum.AutomaticSize.Y
+			holder.Visible = true
+			if instant or contentHeight <= 0 then
+				holder.AutomaticSize = Enum.AutomaticSize.Y
+			else
+				holder.AutomaticSize = Enum.AutomaticSize.None
+				holder.Size = UDim2.new(1, 0, 0, 0)
+				tween(holder, { Size = UDim2.new(1, 0, 0, contentHeight) }, 0.35, Motion.Expo, Motion.Out)
+				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then holder.AutomaticSize = Enum.AutomaticSize.Y end end)
+			end
 		end
-		tween(chevron, { Rotation = self.Collapsed and -90 or 0 }, 0.15)
 		return self
 	end
 	function section:Set(newName) self.Name = newName bindText(title, tostring(newName):upper()) return self end
@@ -2395,7 +2774,7 @@ function Container:CreateSection(props)
 	if collapsible then
 		connect(header.MouseButton1Click, function() section:SetCollapsed(not section.Collapsed) end)
 	end
-	if collapsed then section:SetCollapsed(true) end
+	if collapsed then section:SetCollapsed(true, true) end
 	return section
 end
 Container.CreateGroupbox = Container.CreateSection
@@ -2574,84 +2953,115 @@ function Mova:CreateWindow(props)
 		Name = "Window", BackgroundColor3 = "Background", Size = UDim2.fromOffset(width, height),
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ClipsDescendants = true, Parent = root,
 	})
-	Corner(12, main)
-	Stroke(main)
-	self.Main = main
+	local mainCorner = Corner(CurrentTheme.WindowRadius or 14, main)
+	onTheme(mainCorner, function() mainCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
+	local mainStroke = Stroke(main)
+	Shadow(main, "Shadow", 48, 0.35)
+	local mainScale = New("UIScale", { Scale = 1, Parent = main })
+	self.Main, self.MainStroke, self.MainScale = main, mainStroke, mainScale
+	local TOPBAR = 48
 
 	-- topbar
-	local topbar = New("Frame", { Name = "Topbar", BackgroundColor3 = "Sidebar", Size = UDim2.new(1, 0, 0, 46), Parent = main })
+	local topbar = New("Frame", { Name = "Topbar", BackgroundColor3 = "Sidebar", Size = UDim2.new(1, 0, 0, TOPBAR), Parent = main })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), Parent = topbar })
 	self.Topbar = topbar
 
-	local titleX = 16
+	local titleX = 18
 	local iconImage = resolveIcon(self.Icon)
 	if iconImage then
-		New("ImageLabel", { Image = iconImage, Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(14, 12), Parent = topbar })
-		titleX = 44
+		New("ImageLabel", { Image = iconImage, Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(16, 13), Parent = topbar })
+		titleX = 48
+	else
+		-- accent mark when there is no icon
+		local mark = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(8, 8), Position = UDim2.fromOffset(16, 20), Parent = topbar })
+		Corner(4, mark)
+		Shadow(mark, "Accent", 14, 0.3)
+		titleX = 32
 	end
 	local titleLabel = New("TextLabel", {
-		Font = "TitleFont", TextSize = 15, Size = UDim2.new(0, 260, 0, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 7 or 14),
+		Weight = "SemiBold", TextSize = 15, Size = UDim2.new(0, 260, 0, 18), Position = UDim2.fromOffset(titleX, self.Subtitle and 8 or 15),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 	})
 	bindText(titleLabel, tostring(self.Name))
 	self.TitleLabel = titleLabel
 	if self.Subtitle then
 		local sub = New("TextLabel", {
-			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(0, 260, 0, 14), Position = UDim2.fromOffset(titleX, 25),
+			TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(0, 260, 0, 14), Position = UDim2.fromOffset(titleX, 26),
 			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = topbar,
 		})
 		bindText(sub, tostring(self.Subtitle))
 		self.SubtitleLabel = sub
 	end
 
-	-- topbar buttons
-	local buttons = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 46), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Parent = topbar })
-	List(buttons, 4, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
+	-- topbar buttons (code-drawn glyphs, hover wash; close tints red)
+	local buttons = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, TOPBAR), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Parent = topbar })
+	List(buttons, 2, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
 
-	local function topButton(text, order, tooltip)
+	local function topButton(kind, order, hoverColorKey)
 		local b = New("TextButton", {
-			Text = text, TextSize = 16, TextColor3 = "TextDim", Size = UDim2.fromOffset(28, 28), BackgroundColor3 = "Sidebar", BackgroundTransparency = 0, LayoutOrder = order, Parent = buttons,
+			Text = "", Size = UDim2.fromOffset(30, 30), BackgroundColor3 = "Text", BackgroundTransparency = 1, LayoutOrder = order, Parent = buttons,
 		})
-		Corner(7, b)
-		hoverable(b, b, "Sidebar", "SurfaceHover")
-		return b
+		Corner(8, b)
+		local glyph = Glyph(kind, b, "TextDim", 14, 1.6)
+		connect(b.MouseEnter, function()
+			tween(b, { BackgroundTransparency = 0.93 }, Motion.base)
+			tintGlyph(glyph, themeValue(hoverColorKey or "Text"))
+		end)
+		connect(b.MouseLeave, function()
+			tween(b, { BackgroundTransparency = 1 }, Motion.slow)
+			tintGlyph(glyph, themeValue("TextDim"), Motion.slow)
+		end)
+		connect(b.MouseButton1Down, function() tween(glyph, { Size = UDim2.fromOffset(12, 12) }, Motion.fast, Motion.Quint, Motion.Out) end)
+		connect(b.MouseButton1Up, function() tween(glyph, { Size = UDim2.fromOffset(14, 14) }, Motion.slow, Motion.Back, Motion.Out) end)
+		return b, glyph
 	end
-	local closeBtn = topButton("×", 3)
-	local minBtn = topButton("–", 2)
-	local searchBtn = topButton("⌕", 1)
+	local closeBtn = topButton("close", 3, "Error")
+	local minBtn, minGlyph = topButton("minus", 2)
+	local searchBtn, searchGlyph = topButton("search", 1)
 
 	-- search box
 	local searchHolder = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.fromOffset(0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -112, 0.5, 0), ClipsDescendants = true, Visible = false, Parent = topbar,
+		BackgroundColor3 = "Field", Size = UDim2.fromOffset(0, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -110, 0.5, 0), ClipsDescendants = true, Visible = false, Parent = topbar,
 	})
-	Corner(7, searchHolder)
-	Stroke(searchHolder)
+	Corner(8, searchHolder)
+	local searchStroke = Stroke(searchHolder)
 	local searchBox = New("TextBox", {
-		Text = "", PlaceholderText = "Search...", PlaceholderColor3 = "Placeholder", TextSize = 13, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
+		Text = "", PlaceholderText = "Search...", PlaceholderColor3 = "Placeholder", TextSize = 13, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, Parent = searchHolder,
 	})
+	connect(searchBox.Focused, function() tween(searchStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+	connect(searchBox.FocusLost, function() tween(searchStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 	self.SearchBox = searchBox
 
 	-- sidebar
-	local body = New("Frame", { Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -46), Position = UDim2.fromOffset(0, 46), Parent = main })
+	local body = New("Frame", { Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -TOPBAR), Position = UDim2.fromOffset(0, TOPBAR), Parent = main })
 	self.Body = body
 	local sidebar = New("Frame", { Name = "Sidebar", BackgroundColor3 = "Sidebar", Size = UDim2.new(0, sidebarWidth, 1, 0), Parent = body })
 	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = sidebar })
 	self.Sidebar = sidebar
-	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -48), Parent = sidebar })
-	Padding(tabList, 10, 8, 10, 8)
-	List(tabList, 4)
+	local tabList = New("ScrollingFrame", { Size = UDim2.new(1, 0, 1, -52), Parent = sidebar })
+	Padding(tabList, 10, 10, 10, 10)
+	List(tabList, 3)
 	self.TabList = tabList
+	-- single accent indicator that glides between tabs (Fluent-style selector)
+	local tabIndicator = New("Frame", { Name = "Indicator", BackgroundColor3 = "Accent", Size = UDim2.fromOffset(3, 0), Position = UDim2.fromOffset(3, 0), ZIndex = 3, Visible = false, Parent = sidebar })
+	Corner(2, tabIndicator)
+	Shadow(tabIndicator, "Accent", 10, 0.4)
+	self.TabIndicator = tabIndicator
 
 	-- player chip at the bottom of the sidebar
-	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
-	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -16, 0, 1), Position = UDim2.fromOffset(8, 0), Parent = chip })
+	local chip = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = sidebar })
+	New("Frame", { BackgroundColor3 = "Divider", Size = UDim2.new(1, -20, 0, 1), Position = UDim2.fromOffset(10, 0), Parent = chip })
+	local avatar = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(26, 26), Position = UDim2.fromOffset(12, 13), Parent = chip })
+	Corner(13, avatar)
+	local playerName = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
+	New("TextLabel", { Text = playerName:sub(1, 1):upper(), TextSize = 12, Weight = "Bold", TextColor3 = "OnAccent", Size = UDim2.fromScale(1, 1), Parent = avatar })
 	local chipLabel = New("TextLabel", {
-		Text = (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player", TextSize = 12, TextColor3 = "Text", Font = "TitleFont",
-		Size = UDim2.new(1, -24, 0, 16), Position = UDim2.fromOffset(12, 10), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		Text = playerName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
+		Size = UDim2.new(1, -56, 0, 16), Position = UDim2.fromOffset(46, 11), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
 	})
 	local chipSub = New("TextLabel", {
-		Text = "Mova " .. Mova.Version, TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -24, 0, 14), Position = UDim2.fromOffset(12, 26),
+		Text = "Mova " .. Mova.Version, TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -56, 0, 14), Position = UDim2.fromOffset(46, 27),
 		TextXAlignment = Enum.TextXAlignment.Left, Parent = chip,
 	})
 	self.ChipLabel, self.ChipSub = chipLabel, chipSub
@@ -2662,8 +3072,8 @@ function Mova:CreateWindow(props)
 
 	-- search results page
 	local searchPage = New("ScrollingFrame", { Name = "SearchPage", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
-	Padding(searchPage, 12, 12, 12, 12)
-	List(searchPage, 6)
+	Padding(searchPage, 14, 14, 14, 14)
+	List(searchPage, 6, nil, Enum.HorizontalAlignment.Center)
 	self.SearchPage = searchPage
 	self.SearchEmpty = New("TextLabel", { Text = "No results", TextSize = 13, TextColor3 = "TextDim", Size = UDim2.new(1, 0, 0, 30), Visible = false, LayoutOrder = -1, Parent = searchPage })
 
@@ -2671,7 +3081,10 @@ function Mova:CreateWindow(props)
 	local resizeHandle = New("TextButton", {
 		Text = "", BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0), ZIndex = 10, Parent = main,
 	})
-	New("TextLabel", { Text = "◢", TextSize = 10, TextColor3 = "TextDim", TextTransparency = 0.5, Size = UDim2.fromScale(1, 1), Parent = resizeHandle })
+	local resizeGlyph = Glyph("resize", resizeHandle, "TextDim", 12, 1.4)
+	resizeGlyph.Position = UDim2.new(0.5, -3, 0.5, -3)
+	connect(resizeHandle.MouseEnter, function() tintGlyph(resizeGlyph, themeValue("Text")) end)
+	connect(resizeHandle.MouseLeave, function() tintGlyph(resizeGlyph, themeValue("TextDim"), Motion.slow) end)
 	self.ResizeHandle = resizeHandle
 	makeResizable(main, resizeHandle, self.MinSize, Vector2.new(1400, 1000), function(w, h)
 		self.Size = Vector2.new(w, h)
@@ -2684,8 +3097,13 @@ function Mova:CreateWindow(props)
 	})
 	Corner(17, pill)
 	Stroke(pill)
-	Padding(pill, 0, 14, 0, 14)
-	local pillLabel = New("TextLabel", { Text = prop(props, self.Name, "ShowText", "showName"), Font = "TitleFont", TextSize = 13, Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, Parent = pill })
+	Shadow(pill, "Shadow", 24, 0.4)
+	Padding(pill, 0, 16, 0, 14)
+	local pillDot = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Parent = pill })
+	Corner(4, pillDot)
+	local pillLabel = New("TextLabel", { Text = prop(props, self.Name, "ShowText", "showName"), Weight = "SemiBold", TextSize = 13, Size = UDim2.fromOffset(0, 34), Position = UDim2.fromOffset(16, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = pill })
+	local pillHover = hoverOverlay(pill)
+	hoverFx(pill, pillHover, nil, { strength = 0.95 })
 	self.Pill = pill
 	local pillMoved = false
 	makeDraggable(pill, pill, { onDrag = function() pillMoved = true end })
@@ -2705,12 +3123,14 @@ function Mova:CreateWindow(props)
 		searchOpen = state
 		if state then
 			searchHolder.Visible = true
-			tween(searchHolder, { Size = UDim2.fromOffset(math.min(220, width - 300), 28) }, 0.2)
+			tintGlyph(searchGlyph, themeValue("Accent"))
+			tween(searchHolder, { Size = UDim2.fromOffset(math.min(220, width - 300), 30) }, 0.3, Motion.Expo, Motion.Out)
 			task.defer(function() pcall(function() searchBox:CaptureFocus() end) end)
 		else
 			searchBox.Text = ""
-			tween(searchHolder, { Size = UDim2.fromOffset(0, 28) }, 0.15)
-			task.delay(0.16, function() if not searchOpen then searchHolder.Visible = false end end)
+			tintGlyph(searchGlyph, themeValue("TextDim"), Motion.slow)
+			tween(searchHolder, { Size = UDim2.fromOffset(0, 30) }, Motion.base, Motion.Quint, Motion.In)
+			task.delay(Motion.base + 0.01, function() if not searchOpen then searchHolder.Visible = false end end)
 		end
 	end
 	connect(searchBtn.MouseButton1Click, function() setSearch(not searchOpen) end)
@@ -2735,10 +3155,27 @@ function Mova:CreateWindow(props)
 		main.Size = UDim2.fromOffset(w, h)
 	end)
 
-	-- intro animation
-	main.Size = UDim2.fromOffset(width * 0.9, height * 0.9)
+	-- veil: a window-coloured sheet above the content; fading it reveals the UI without a CanvasGroup
+	local veil = New("Frame", { Name = "Veil", BackgroundColor3 = "Background", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 90, Visible = false, Parent = main })
+	local veilCorner = Corner(CurrentTheme.WindowRadius or 14, veil)
+	onTheme(veilCorner, function() veilCorner.CornerRadius = UDim.new(0, CurrentTheme.WindowRadius or 14) end)
+	self.Veil = veil
+	self._introAt = os.clock()
+
+	-- intro: pop from 0.86 with Expo Out while the veil lifts
+	veil.Visible = true
+	veil.BackgroundTransparency = 0
+	mainScale.Scale = 0.86
 	main.BackgroundTransparency = 1
-	tween(main, { Size = UDim2.fromOffset(width, height), BackgroundTransparency = 0 }, 0.35, Enum.EasingStyle.Back)
+	mainStroke.Transparency = 1
+	tween(mainScale, { Scale = 1 }, 0.55, Motion.Expo, Motion.Out)
+	tween(main, { BackgroundTransparency = 0 }, 0.3, Motion.Quint, Motion.Out)
+	tween(mainStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.5, Motion.Quint, Motion.Out)
+	task.delay(0.12, function()
+		if self.Destroyed then return end
+		tween(veil, { BackgroundTransparency = 1 }, 0.45, Motion.Quint, Motion.Out)
+		task.delay(0.46, function() if not self.Destroyed and not self.Hidden then veil.Visible = false end end)
+	end)
 
 	Mova.Windows[#Mova.Windows + 1] = self
 
@@ -2751,7 +3188,8 @@ function Mova:CreateWindow(props)
 		self._keyGate = true
 		self:_showKeySystem(keySystem, function()
 			self._keyGate = false
-			main.Visible = true
+			self.Hidden = true
+			self:Show()
 			self:_finishSetup(props)
 		end)
 	else
@@ -2804,36 +3242,59 @@ function Window:CreateTab(props, icon)
 	tab.Tab = tab
 
 	local button = New("TextButton", {
-		Text = "", BackgroundColor3 = "Sidebar", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = prop(props, self:_nextOrderTab(), "Order", "order"), Parent = self.TabList,
+		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = prop(props, self:_nextOrderTab(), "Order", "order"), Parent = self.TabList,
 	})
-	Corner(8, button)
+	Corner(nil, button)
+	local buttonStroke = Stroke(button)
+	buttonStroke.Transparency = 1
+	local hover = hoverOverlay(button)
 	local iconImage = resolveIcon(iconValue)
 	local labelX = 12
 	if iconImage then
-		New("ImageLabel", { Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(10, 9), Name = "Icon", Parent = button })
-		labelX = 32
+		New("ImageLabel", { Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(11, 10), Name = "Icon", Parent = button })
+		labelX = 34
 	end
 	local label = New("TextLabel", {
-		TextSize = 13, TextColor3 = "TextDim", Size = UDim2.new(1, -labelX - 8, 1, 0), Position = UDim2.fromOffset(labelX, 0),
+		TextSize = 13, Weight = "Medium", TextColor3 = "TextDim", Size = UDim2.new(1, -labelX - 8, 1, 0), Position = UDim2.fromOffset(labelX, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = button,
 	})
 	bindText(label, tostring(name))
-	local indicator = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(3, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Visible = false, Parent = button })
-	Corner(2, indicator)
 
 	local page = New("ScrollingFrame", { Name = "Page", Size = UDim2.fromScale(1, 1), Visible = false, Parent = self.Content })
-	Padding(page, 12, 12, 12, 12)
-	List(page, 6)
+	Padding(page, 14, 14, 14, 14)
+	List(page, 6, nil, Enum.HorizontalAlignment.Center)
 
-	tab.Button, tab.Label, tab.Indicator, tab.Page, tab.Holder, tab.Icon = button, label, indicator, page, page, button:FindFirstChild("Icon")
+	tab.Button, tab.Label, tab.Stroke, tab.Hover, tab.Page, tab.Holder, tab.Icon = button, label, buttonStroke, hover, page, page, button:FindFirstChild("Icon")
 
 	connect(button.MouseEnter, function()
-		if self.CurrentTab ~= tab then tween(button, { BackgroundColor3 = themeValue("SurfaceHover") }, 0.12) end
+		if self.CurrentTab ~= tab then
+			tween(hover, { BackgroundTransparency = 0.95 }, Motion.base)
+			tween(label, { TextColor3 = themeValue("Text") }, Motion.base)
+			if tab.Icon then tween(tab.Icon, { ImageColor3 = themeValue("Text") }, Motion.base) end
+		end
 	end)
 	connect(button.MouseLeave, function()
-		if self.CurrentTab ~= tab then tween(button, { BackgroundColor3 = themeValue("Sidebar") }, 0.12) end
+		if self.CurrentTab ~= tab then
+			tween(hover, { BackgroundTransparency = 1 }, Motion.slow)
+			tween(label, { TextColor3 = themeValue("TextDim") }, Motion.slow)
+			if tab.Icon then tween(tab.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.slow) end
+		end
 	end)
 	connect(button.MouseButton1Click, function() self:SelectTab(tab) end)
+
+	-- staggered reveal while the window intro is still running
+	if self._introAt and os.clock() - self._introAt < 1.2 then
+		local idx = #self.Tabs
+		label.TextTransparency = 1
+		if tab.Icon then tab.Icon.ImageTransparency = 1 end
+		button.Position = UDim2.fromOffset(-12, 0)
+		task.delay(0.2 + math.min(idx, 8) * 0.045, function()
+			if self.Destroyed then return end
+			tween(label, { TextTransparency = 0 }, 0.35, Motion.Quint, Motion.Out)
+			if tab.Icon then tween(tab.Icon, { ImageTransparency = 0 }, 0.35, Motion.Quint, Motion.Out) end
+			tween(button, { Position = UDim2.fromOffset(0, 0) }, 0.45, Motion.Expo, Motion.Out)
+		end)
+	end
 
 	self.Tabs[#self.Tabs + 1] = tab
 	if not self.CurrentTab and not prop(props, false, "_internal") then
@@ -2860,24 +3321,62 @@ function Window:SelectTab(target)
 	local previous = self.CurrentTab
 	if previous == target then return end
 	self.CurrentTab = target
+	self._tabToken = (self._tabToken or 0) + 1
+	local token = self._tabToken
+	local downwards = true
 	if previous then
-		previous.Page.Visible = false
-		previous.Indicator.Visible = false
-		tween(previous.Button, { BackgroundColor3 = themeValue("Sidebar") }, 0.15)
-		tween(previous.Label, { TextColor3 = themeValue("TextDim") }, 0.15)
-		if previous.Icon then tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, 0.15) end
-		ThemeRegistry[previous.Button] = { BackgroundColor3 = "Sidebar" }
+		downwards = (target.Button.LayoutOrder or 0) >= (previous.Button.LayoutOrder or 0)
+		tween(previous.Button, { BackgroundTransparency = 1 }, Motion.base)
+		tween(previous.Stroke, { Transparency = 1 }, Motion.base)
+		tween(previous.Label, { TextColor3 = themeValue("TextDim") }, Motion.base)
+		if previous.Icon then tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.base) end
 		ThemeRegistry[previous.Label] = { TextColor3 = "TextDim" }
 	end
-	target.Page.Visible = true
-	target.Indicator.Visible = true
-	target.Page.Position = UDim2.fromOffset(0, 10)
-	tween(target.Page, { Position = UDim2.fromOffset(0, 0) }, 0.2)
-	tween(target.Button, { BackgroundColor3 = themeValue("Surface") }, 0.15)
-	tween(target.Label, { TextColor3 = themeValue("Text") }, 0.15)
-	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Text") }, 0.15) end
-	ThemeRegistry[target.Button] = { BackgroundColor3 = "Surface" }
+	-- sidebar: selected pill + gliding indicator
+	tween(target.Hover, { BackgroundTransparency = 1 }, Motion.fast)
+	tween(target.Button, { BackgroundTransparency = 0 }, Motion.base)
+	tween(target.Stroke, { Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+	tween(target.Label, { TextColor3 = themeValue("Text") }, Motion.base)
+	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Text") }, Motion.base) end
 	ThemeRegistry[target.Label] = { TextColor3 = "Text" }
+	local indicator = self.TabIndicator
+	if indicator then
+		local function place()
+			local y = target.Button.AbsolutePosition.Y - self.Sidebar.AbsolutePosition.Y
+			local targetPos = UDim2.fromOffset(3, y + 9)
+			if not indicator.Visible then
+				indicator.Visible = true
+				indicator.Position = targetPos
+				indicator.Size = UDim2.fromOffset(3, 0)
+				tween(indicator, { Size = UDim2.fromOffset(3, 18) }, 0.35, Motion.Back, Motion.Out)
+			else
+				tween(indicator, { Position = targetPos }, 0.35, Motion.Expo, Motion.InOut)
+				tween(indicator, { Size = UDim2.fromOffset(3, 24) }, 0.15, Motion.Quint, Motion.Out)
+				task.delay(0.15, function() if token == self._tabToken then tween(indicator, { Size = UDim2.fromOffset(3, 18) }, 0.3, Motion.Back, Motion.Out) end end)
+			end
+		end
+		place()
+		task.defer(function() if token == self._tabToken and not self.Destroyed then place() end end)
+	end
+	-- content: previous page slides away and fades, new one slides in (Fluent-style)
+	local offset = downwards and 18 or -18
+	if previous then
+		local prevPage = previous.Page
+		tween(prevPage, { Position = UDim2.fromOffset(0, -offset) }, 0.12, Motion.Quint, Motion.In)
+		task.delay(0.1, function()
+			if token ~= self._tabToken then return end
+			prevPage.Visible = false
+			prevPage.Position = UDim2.fromOffset(0, 0)
+		end)
+	end
+	local function reveal()
+		if token ~= self._tabToken or self.Destroyed then return end
+		if self._searching then return end
+		target.Page.Position = UDim2.fromOffset(0, offset)
+		target.Page.Visible = true
+		tween(target.Page, { Position = UDim2.fromOffset(0, 0) }, 0.4, Motion.Expo, Motion.Out)
+	end
+	if previous then task.delay(0.1, reveal) else reveal() end
 	closePopup()
 	if self.SearchBox and self.SearchBox.Text ~= "" then self.SearchBox.Text = "" end
 end
@@ -2939,22 +3438,43 @@ function Window:Show()
 	if self.Destroyed then return end
 	self.Hidden = false
 	closePopup()
-	self.Pill.Visible = false
+	self._visToken = (self._visToken or 0) + 1
+	local token = self._visToken
+	tween(self.Pill, { Position = UDim2.new(0.5, 0, 0, -40), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
+	task.delay(Motion.base, function() if token == self._visToken and not self.Hidden then self.Pill.Visible = false end end)
 	self.Main.Visible = true
+	self.Veil.Visible = true
+	self.Veil.BackgroundTransparency = 0
+	self.MainScale.Scale = 0.92
 	self.Main.BackgroundTransparency = 1
-	tween(self.Main, { BackgroundTransparency = 0 }, 0.2)
+	tween(self.MainScale, { Scale = 1 }, 0.45, Motion.Expo, Motion.Out)
+	tween(self.Main, { BackgroundTransparency = 0 }, Motion.base, Motion.Quint, Motion.Out)
+	tween(self.MainStroke, { Transparency = CurrentTheme.StrokeTransparency }, Motion.slow)
+	tween(self.Veil, { BackgroundTransparency = 1 }, 0.3, Motion.Quint, Motion.Out)
+	task.delay(0.31, function() if token == self._visToken and not self.Hidden then self.Veil.Visible = false end end)
 end
 
 function Window:Hide()
 	if self.Destroyed then return end
 	self.Hidden = true
 	closePopup()
-	tween(self.Main, { BackgroundTransparency = 1 }, 0.15)
-	task.delay(0.16, function()
-		if self.Hidden then
-			self.Main.Visible = false
-			self.Pill.Visible = true
-		end
+	self._visToken = (self._visToken or 0) + 1
+	local token = self._visToken
+	self.Veil.Visible = true
+	tween(self.Veil, { BackgroundTransparency = 0 }, 0.12, Motion.Quint, Motion.Out)
+	tween(self.MainScale, { Scale = 0.92 }, 0.25, Motion.Quint, Motion.In)
+	tween(self.MainStroke, { Transparency = 1 }, 0.15)
+	task.delay(0.08, function()
+		if token ~= self._visToken then return end
+		tween(self.Main, { BackgroundTransparency = 1 }, 0.17, Motion.Quint, Motion.In)
+	end)
+	task.delay(0.26, function()
+		if token ~= self._visToken or not self.Hidden then return end
+		self.Main.Visible = false
+		self.Pill.Visible = true
+		self.Pill.BackgroundTransparency = 1
+		self.Pill.Position = UDim2.new(0.5, 0, 0, -40)
+		tween(self.Pill, { Position = UDim2.new(0.5, 0, 0, 12), BackgroundTransparency = 0 }, 0.45, Motion.Expo, Motion.Out)
 	end)
 end
 
@@ -2972,12 +3492,15 @@ function Window:IsVisible() return not self.Hidden end
 
 function Window:ToggleMinimise()
 	self.Minimised = not self.Minimised
+	self._minToken = (self._minToken or 0) + 1
+	local token = self._minToken
+	closePopup()
 	if self.Minimised then
-		self.Body.Visible = false
-		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, 46) }, 0.2)
+		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Topbar.Size.Y.Offset) }, 0.35, Motion.Expo, Motion.InOut)
+		task.delay(0.35, function() if token == self._minToken and self.Minimised then self.Body.Visible = false end end)
 	else
-		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, 0.2)
-		task.delay(0.1, function() self.Body.Visible = true end)
+		self.Body.Visible = true
+		tween(self.Main, { Size = UDim2.fromOffset(self.Size.X, self.Size.Y) }, 0.35, Motion.Expo, Motion.InOut)
 	end
 end
 Window.ToggleMinimize = Window.ToggleMinimise
@@ -3163,7 +3686,7 @@ function Window:_createSettingsTab()
 		})
 	end
 	appearance:CreateButton({ Name = "Reset window position", Callback = function()
-		tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.25)
+		tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.45, Motion.Expo, Motion.Out)
 	end })
 
 	if self.ConfigEnabled then
@@ -3280,33 +3803,51 @@ function Window:_showKeySystem(settings, onSuccess)
 		end
 	end
 
-	local dim = New("Frame", { BackgroundColor3 = "Overlay", BackgroundTransparency = 0.4, Size = UDim2.fromScale(1, 1), Parent = Layers.dialog })
+	local dim = New("Frame", { BackgroundColor3 = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = Layers.dialog })
+	tween(dim, { BackgroundTransparency = 0.4 }, 0.3, Motion.Quint, Motion.Out)
 	local vp = viewportSize()
 	local card = New("Frame", {
-		BackgroundColor3 = "Background", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(math.min(380, vp.X - 32), 0),
-		AutomaticSize = Enum.AutomaticSize.Y, Parent = dim,
+		BackgroundColor3 = "Background", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 24), Size = UDim2.fromOffset(math.min(380, vp.X - 32), 0),
+		AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = dim,
 	})
-	Corner(12, card)
-	Stroke(card)
-	Padding(card, 18, 18, 18, 18)
+	Corner(CurrentTheme.WindowRadius or 14, card)
+	local cardStroke = Stroke(card)
+	cardStroke.Transparency = 1
+	Shadow(card, "Shadow", 48, 0.35)
+	local cardScale = New("UIScale", { Scale = 0.92, Parent = card })
+	Padding(card, 20, 20, 20, 20)
 	List(card, 10)
-	New("TextLabel", { Text = tostring(title), Font = "TitleFont", TextSize = 17, Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = card })
-	New("TextLabel", { Text = tostring(subtitle), TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = card })
-	New("TextLabel", { Text = tostring(note), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 3, Parent = card })
-	local field = New("Frame", { BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 4, Parent = card })
-	Corner(8, field)
+	tween(card, { BackgroundTransparency = 0, Position = UDim2.fromScale(0.5, 0.5) }, 0.45, Motion.Expo, Motion.Out)
+	tween(cardScale, { Scale = 1 }, 0.5, Motion.Back, Motion.Out)
+	tween(cardStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.45)
+	local head = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
+	local mark = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(10, 10), Position = UDim2.fromOffset(0, 7), Parent = head })
+	Corner(5, mark)
+	Shadow(mark, "Accent", 16, 0.3)
+	New("TextLabel", { Text = tostring(title), Weight = "SemiBold", TextSize = 17, Size = UDim2.new(1, -20, 0, 22), Position = UDim2.fromOffset(20, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = head })
+	New("TextLabel", { Text = tostring(subtitle), TextSize = 12, TextColor3 = "TextDim", Size = UDim2.new(1, -20, 0, 14), Position = UDim2.fromOffset(20, 24), TextXAlignment = Enum.TextXAlignment.Left, Parent = head })
+	New("TextLabel", { Text = tostring(note), TextSize = 13, TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 3, Parent = card })
+	local field = New("Frame", { BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 4, Parent = card })
+	Corner(nil, field)
 	local fieldStroke = Stroke(field)
-	local box = New("TextBox", { Text = "", PlaceholderText = "Key", PlaceholderColor3 = "Placeholder", TextSize = 14, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = field })
+	local box = New("TextBox", { Text = "", PlaceholderText = "Paste your key", PlaceholderColor3 = "Placeholder", TextSize = 14, Size = UDim2.new(1, -24, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = field })
+	connect(box.Focused, function() tween(fieldStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+	connect(box.FocusLost, function() tween(fieldStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 	local status = New("TextLabel", { Text = "", TextSize = 12, TextColor3 = "Error", Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5, Visible = false, Parent = card })
-	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 6, Parent = card })
+	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 6, Parent = card })
 	List(row, 8, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Right)
+	Padding(row, 4, 0, 0, 0)
 
 	local function button(text, primary, order)
 		local b = New("TextButton", {
-			Text = text, TextSize = 13, Font = "TitleFont", BackgroundColor3 = primary and "Accent" or "Surface", TextColor3 = primary and "OnAccent" or "Text", BackgroundTransparency = 0,
-			Size = UDim2.fromOffset(math.max(90, textWidth(text, 13) + 28), 32), LayoutOrder = order, Parent = row,
+			Text = text, TextSize = 13, Weight = "SemiBold", BackgroundColor3 = primary and "Accent" or "Surface", TextColor3 = primary and "OnAccent" or "Text", BackgroundTransparency = 0,
+			Size = UDim2.fromOffset(math.max(96, textWidth(text, 13) + 32), 32), LayoutOrder = order, Parent = row,
 		})
-		Corner(8, b)
+		Corner(nil, b)
+		if not primary then Stroke(b) end
+		local h = hoverOverlay(b)
+		hoverFx(b, h, nil, { strength = 0.88 })
+		connect(b.MouseButton1Click, function() flash(h) end)
 		return b
 	end
 	if link then
@@ -3340,15 +3881,22 @@ function Window:_showKeySystem(settings, onSuccess)
 					FS.ensureFolder(SETTINGS_FOLDER .. "/keys")
 					FS.writefile(keyPath, trim(box.Text))
 				end
-				tween(dim, { BackgroundTransparency = 1 }, 0.2)
-				task.delay(0.2, function() dim:Destroy() end)
+				tween(dim, { BackgroundTransparency = 1 }, 0.25, Motion.Quint, Motion.In)
+				tween(card, { BackgroundTransparency = 1 }, 0.2, Motion.Quint, Motion.In)
+				tween(cardScale, { Scale = 1.04 }, 0.25, Motion.Quint, Motion.In)
+				task.delay(0.26, function() dim:Destroy() end)
 				onSuccess()
 			else
 				status.Text = "Invalid key."
 				status.TextColor3 = themeValue("Error")
 				status.Visible = true
-				tween(fieldStroke, { Color = themeValue("Error") }, 0.1)
-				task.delay(0.6, function() tween(fieldStroke, { Color = themeValue("Stroke") }, 0.3) end)
+				tween(fieldStroke, { Color = themeValue("Error"), Transparency = 0 }, 0.1)
+				-- shake
+				local base = field.Position
+				for i, dx in ipairs({ -6, 6, -4, 4, 0 }) do
+					task.delay((i - 1) * 0.05, function() tween(field, { Position = UDim2.new(base.X.Scale, base.X.Offset + dx, base.Y.Scale, base.Y.Offset) }, 0.05, Motion.Quint, Motion.Out) end)
+				end
+				task.delay(0.8, function() tween(fieldStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, 0.3) end)
 			end
 		end)
 	end

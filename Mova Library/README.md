@@ -42,6 +42,25 @@ The research in [`docs/roblox-ui-libraries-research.md`](../docs/roblox-ui-libra
 
 Things borrowed deliberately (credit where due): the `New(class, props)` + theme-tag registry idea from WindUI's Creator, Obsidian's `SafeCallback` + keypicker modes, Rayfield's `Flag`/`ConfigurationSaving` shape and `Range/Increment` slider semantics, Linoria's global `Toggles`/`Options` tables, Gen 2's gradient-based HSV picker.
 
+### Look & motion — and where each idea comes from
+
+Every visual decision below was taken after reading the presentation code of the vendored libraries (`Rayfield Gen 2/`, `WindUI/`, `Fluent/`, `Aetheris/`, …). Nothing is loaded from the marketplace; glyphs (chevrons, ✕, −, search, check, resize grip) are drawn from rotated frames.
+
+| What you see | Source of the idea |
+| --- | --- |
+| Real font weights (`Regular / Medium / SemiBold / Bold`) through `Font.new(family, weight)` instead of `Enum.Font` pairs; 14 px Medium titles, 12 px dim descriptions | WindUI `Creator.Font` + `FontWeight`, Gen 2 / Aetheris `Font.new(id, weight)` |
+| Cards: surface + 1 px outline at 45 % transparency, hover = white wash (`BackgroundTransparency 0.95`) and the outline sharpens, 0.22 s Quint Out; press = card shrinks 8 px symmetrically and springs back with Exponential Out | Gen 2 `hover()` / `press()` (stroke + overlay tween, width bounce) |
+| Toggle: 42×22 pill, knob squashes while travelling and lands with Back Out, accent glow (`UIShadow`) when on | WindUI/Fluent 0.25 s Quint toggles, Gen 2 `AccentGlow` + `UIShadow` |
+| Slider: gradient fill, knob grows idle → hover → drag with a glow, value pill gets an accent outline while dragging | Gen 2 slider fill gradient + knob states |
+| Dropdown / colour popups grow out of the field (0.3 s Exponential Out) and shrink back; chevron rotates with Back Out; selected rows show a drawn check | Fluent dropdown, Obsidian popup sizing |
+| Sidebar: one accent indicator that glides to the selected tab (0.35 s Exponential InOut, stretches then settles) and tabs that slide in staggered during the intro | Fluent `SelectTab` selector spring, Gen 2 tab-selector stagger |
+| Page switch: old page slides out, new page slides in from the direction of travel (0.4 s Exponential Out) | Fluent `SelectTab` container swap |
+| Window intro: pops from 86 % with Exponential Out while a window-coloured veil lifts off the content; hide = veil + scale down; minimise = height tween 0.35 s Exponential InOut; drop shadow via `UIShadow` when the engine has it | Gen 2 `_firstShow` / `_fadeSurfaces` reveal (done without a `CanvasGroup`) |
+| Notifications slide in from the right edge with a coloured type bar; dialogs dim the screen and the panel pops with Back Out | Gen 2 notification stack, Aetheris Back Out pops |
+| Key-system card shakes the field on a wrong key | common pattern (WindUI / Starlight key UIs) |
+
+All timings live in one `Motion` table (`fast 0.12`, `base 0.22`, `slow 0.4`, Quint / Exponential / Back) so the whole library feels consistent.
+
 ---
 
 ## Feature overview
@@ -135,7 +154,17 @@ Mova:RegisterTheme("Neon", { Accent = Color3.fromRGB(0, 255, 170) })  -- missing
 Mova:SetTheme({ Background = Color3.fromRGB(9, 9, 9) })               -- inline partial theme
 ```
 
-Theme keys: `Background, Sidebar, Surface, SurfaceHover, Stroke, Accent, AccentHover, OnAccent, Text, TextDim, Placeholder, Divider, Shadow, Knob, Track, Field, Scrollbar, Overlay, Success, Warning, Error, Font, TitleFont`.
+Theme keys: `Background, Sidebar, Surface, SurfaceHover, Stroke, Accent, AccentHover, OnAccent, Text, TextDim, Placeholder, Divider, Shadow, Knob, Track, Field, Scrollbar, Overlay, Success, Warning, Error` (colours) plus:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `FontFamily` | `rbxasset://fonts/families/GothamSSm.json` | Family used with `Font.new(family, weight)`. Any built-in family or an `rbxassetid://` font works (secure mode falls back to the built-in). |
+| `Font` / `TitleFont` | `GothamMedium` / `GothamBold` | Fallback `Enum.Font`s for engines without `FontFace`. |
+| `Radius` | `10` | Corner radius of cards, fields, popups. |
+| `WindowRadius` | `14` | Corner radius of the window, dialogs and the key card. |
+| `StrokeTransparency` | `0.45` | Resting transparency of element outlines (hover sharpens them). |
+
+Any `TextLabel/TextButton/TextBox` created through `Mova.New` accepts `Weight = "Regular" | "Medium" | "SemiBold" | "Bold"`; the weight re-resolves automatically when the theme's `FontFamily` changes.
 
 ### Configs
 

@@ -127,6 +127,8 @@ local function makeEnum(name, items)
 	})
 	Enum[name] = e
 end
+makeEnum("FontWeight", { "Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Heavy" })
+makeEnum("FontStyle", { "Normal", "Italic" })
 makeEnum("Font", { "Gotham", "GothamMedium", "GothamBold", "GothamBlack", "BuilderSans", "SourceSans", "Code" })
 makeEnum("EasingStyle", { "Linear", "Quad", "Quint", "Back", "Sine", "Exponential" })
 makeEnum("EasingDirection", { "In", "Out", "InOut" })
@@ -159,12 +161,13 @@ local EVENT_NAMES = {
 	TouchTap = 1, SelectionGained = 1, SelectionLost = 1,
 }
 local DEFAULTS = {
+	GroupTransparency = 0, Scale = 1, BlurRadius = nil,
 	Name = "Instance", Parent = nil, Visible = true, Text = "", Image = "", ZIndex = 1, LayoutOrder = 0,
 	BackgroundTransparency = 0, TextTransparency = 0, ImageTransparency = 0, Transparency = 0, Rotation = 0,
 	ClipsDescendants = false, Active = false, AutoButtonColor = true, ClearTextOnFocus = true, TextWrapped = false,
 	Enabled = true, ResetOnSpawn = true, IgnoreGuiInset = false, DisplayOrder = 0, PlaceholderText = "", TextSize = 14,
 	ScrollBarThickness = 12, ScrollBarImageTransparency = 0, BorderSizePixel = 1, Thickness = 1, TextScaled = false,
-	RichText = false, Selectable = true, TextEditable = true, MultiLine = false, CanvasPosition = nil, Interactable = true,
+	RichText = false, Selectable = true, TextEditable = true, MultiLine = false, Interactable = true,
 	ElasticBehavior = nil, TopImage = "", BottomImage = "", MidImage = "", CornerRadius = nil, Padding = nil,
 }
 
@@ -191,6 +194,7 @@ local function newInstance(className)
 	self._props.AnchorPoint = Vector2.new(0, 0)
 	self._props.AbsoluteSize = Vector2.new(100, 40)
 	self._props.AbsolutePosition = Vector2.new(0, 0)
+	if className == "ScrollingFrame" then self._props.CanvasPosition = Vector2.new(0, 0) end
 	self._props.BackgroundColor3 = Color3.new(1, 1, 1)
 	self._props.TextColor3 = Color3.new(0, 0, 0)
 	self._props.ImageColor3 = Color3.new(1, 1, 1)
@@ -318,6 +322,8 @@ InstanceMT.__newindex = function(self, key, value)
 		error(key .. " must be Color3, got " .. typeof(value) .. " (" .. tostring(value) .. ")", 2)
 	end
 	if key == "Font" and typeof(value) ~= "EnumItem" then error("Font must be an EnumItem, got " .. typeof(value), 2) end
+	if key == "FontFace" and typeof(value) ~= "Font" then error("FontFace must be a Font, got " .. typeof(value), 2) end
+	if key == "Rotation" and type(value) ~= "number" then error("Rotation must be a number", 2) end
 	if key == "Visible" and typeof(value) ~= "boolean" then error("Visible must be boolean", 2) end
 	local old = self._props[key]
 	self._props[key] = value
