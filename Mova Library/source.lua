@@ -1047,6 +1047,17 @@ local function getRoot()
 	return Root
 end
 
+-- Height of Roblox's own top bar. Our ScreenGui ignores the inset so the window can use the whole
+-- screen, which means anything we park at the very top must be pushed below the inset or Roblox's
+-- top bar will swallow the taps (this is what made the reopen pill unclickable).
+local function topInset()
+	if GuiService and Root and Root.IgnoreGuiInset then
+		local ok, v = pcall(function() return GuiService:GetGuiInset() end)
+		if ok and v then return v.Y end
+	end
+	return 0
+end
+
 local function viewportSize()
 	local ok, cam = pcall(function() return workspace.CurrentCamera end)
 	if ok and cam and cam.ViewportSize and cam.ViewportSize.X > 0 then
@@ -1133,8 +1144,9 @@ local function makeDraggable(frame, handle, options)
 			local vp = viewportSize()
 			local size = frame.AbsoluteSize
 			local ax, ay = frame.AnchorPoint.X, frame.AnchorPoint.Y
+			local top = topInset()
 			x = clamp(x, size.X * ax, math.max(size.X * ax, vp.X - size.X * (1 - ax)))
-			y = clamp(y, size.Y * ay, math.max(size.Y * ay, vp.Y - size.Y * (1 - ay)))
+			y = clamp(y, size.Y * ay + top, math.max(size.Y * ay + top, vp.Y - size.Y * (1 - ay)))
 		end
 		frame.Position = UDim2.fromOffset(x, y)
 		if options.onDrag then options.onDrag(frame.Position, delta) end
@@ -3111,8 +3123,8 @@ function Mova:CreateWindow(props)
 
 	-- floating "open" pill (shown while hidden; essential on mobile)
 	local pill = New("TextButton", {
-		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 0, Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X,
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Visible = false, Parent = root,
+		Text = "", BackgroundColor3 = "Surface", BackgroundTransparency = 0, Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X,
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, topInset() + 12), ZIndex = 200, Active = true, Visible = false, Parent = root,
 	})
 	Corner(17, pill)
 	Stroke(pill)
@@ -3120,16 +3132,19 @@ function Mova:CreateWindow(props)
 	Padding(pill, 0, 16, 0, 14)
 	local pillDot = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Parent = pill })
 	Corner(4, pillDot)
-	local pillLabel = New("TextLabel", { Text = prop(props, self.Name, "ShowText", "showName"), Weight = "SemiBold", TextSize = 13, Size = UDim2.fromOffset(0, 34), Position = UDim2.fromOffset(16, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = pill })
+	local pillLabel = New("TextLabel", { Text = prop(props, self.Name, "ShowText", "showName"), Weight = "SemiBold", TextSize = 13, Size = UDim2.fromOffset(0, 36), Position = UDim2.fromOffset(16, 0), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 201, Parent = pill })
 	local pillHover = hoverOverlay(pill)
 	hoverFx(pill, pillHover, nil, { strength = 0.95 })
 	self.Pill = pill
 	local pillMoved = false
 	makeDraggable(pill, pill, { onDrag = function(_, delta) if delta.Magnitude > 8 then pillMoved = true end end })
 	connect(pill.InputBegan, function() pillMoved = false end)
-	connect(pill.MouseButton1Click, function()
-		if not pillMoved then self:Show() end
-	end)
+	local function pillTapped()
+		if not pillMoved and self.Hidden then self:Show() end
+	end
+	connect(pill.MouseButton1Click, pillTapped)
+	-- Activated also covers touch taps and gamepad; Show() is idempotent so firing twice is harmless
+	pcall(function() connect(pill.Activated, pillTapped) end)
 
 	-- drag the window by its topbar
 	makeDraggable(main, topbar, {})
@@ -3477,7 +3492,7 @@ function Window:Hide()
 		self.Pill.Visible = true
 		self.Pill.BackgroundTransparency = 1
 		self.Pill.Position = UDim2.new(0.5, 0, 0, -40)
-		tween(self.Pill, { Position = UDim2.new(0.5, 0, 0, 12), BackgroundTransparency = 0 }, 0.45, Motion.Expo, Motion.Out)
+		tween(self.Pill, { Position = UDim2.new(0.5, 0, 0, topInset() + 12), BackgroundTransparency = 0 }, 0.45, Motion.Expo, Motion.Out)
 	end)
 end
 
