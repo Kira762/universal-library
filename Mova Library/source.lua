@@ -3291,27 +3291,29 @@ function Mova:CreateWindow(props)
 	local minBtn, minGlyph = topButton("minus", 2)
 	local searchBtn, searchGlyph = topButton("search", 1)
 
-	-- Search pill (Gen 2's search bar): while open it takes over the title side of the topbar as
-	-- one full-width pill - magnifier inside on the left, the field, and a clear button on the
-	-- right - instead of a small box floating next to the magnifier button. The title fades out
-	-- underneath it and back when it closes.
-	local SEARCH_RIGHT = 10 + 3 * 30 + 2 * 2 + 10 -- the three topbar buttons plus breathing room
+	-- Search field: a compact floating pill (WindUI's palette width, Rayfield 2022's drop-down
+	-- entrance) centred over the content area just under the topbar - never wider than 360px, so
+	-- it reads as a field rather than a bar that swallows the whole title row. Magnifier inside on
+	-- the left, clear button inside on the right; the results page starts below it.
+	local SEARCH_H = 36
 	local searchHolder = New("Frame", {
-		Name = "Search", BackgroundColor3 = "Field", BackgroundTransparency = 1, Size = UDim2.new(1, -12 - SEARCH_RIGHT, 0, 32),
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ClipsDescendants = true, Visible = false, ZIndex = 3, Parent = topbar,
+		Name = "Search", BackgroundColor3 = "Field", BackgroundTransparency = 1, Size = UDim2.new(1, -sidebarWidth - 28, 0, SEARCH_H),
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6), ClipsDescendants = false, Visible = false, ZIndex = 15, Parent = main,
 	})
+	New("UISizeConstraint", { MaxSize = Vector2.new(360, SEARCH_H), Parent = searchHolder })
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = searchHolder })
 	local searchStroke = Stroke(searchHolder)
 	searchStroke.Transparency = 1
-	local searchIconHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ZIndex = 4, Parent = searchHolder })
-	Glyph("search", searchIconHolder, "TextDim", 14, 1.6)
+	local searchShadow = Shadow(searchHolder, "Shadow", 24, 1)
+	local searchIconHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 13, 0.5, 0), ZIndex = 16, Parent = searchHolder })
+	local searchFieldGlyph = Glyph("search", searchIconHolder, "TextDim", 14, 1.6)
 	local searchBox = New("TextBox", {
-		Text = "", PlaceholderText = "Search all tabs", PlaceholderColor3 = "Placeholder", TextSize = 13, ClearTextOnFocus = false,
-		Size = UDim2.new(1, -36 - 34, 1, 0), Position = UDim2.fromOffset(36, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = searchHolder,
+		Text = "", PlaceholderText = "Search all tabs", PlaceholderColor3 = "Placeholder", TextSize = 13, ClearTextOnFocus = false, TextTransparency = 1,
+		Size = UDim2.new(1, -38 - 34, 1, 0), Position = UDim2.fromOffset(38, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 16, Parent = searchHolder,
 	})
 	local clearBtn = New("TextButton", {
-		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -5, 0.5, 0), ZIndex = 5, Parent = searchHolder,
+		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -5, 0.5, 0), ZIndex = 17, Parent = searchHolder,
 	})
 	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = clearBtn })
 	local clearGlyph = Glyph("close", clearBtn, "TextDim", 12, 1.6)
@@ -3373,7 +3375,7 @@ function Mova:CreateWindow(props)
 
 	-- search results page
 	local searchPage = New("ScrollingFrame", { Name = "SearchPage", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
-	Padding(searchPage, 14, 14, 14, 14)
+	Padding(searchPage, 10 + 36 + 12, 14, 14, 14) -- the floating search field sits over the top of this page
 	List(searchPage, 6, nil, Enum.HorizontalAlignment.Center)
 	self.SearchPage = searchPage
 	self.SearchEmpty = New("TextLabel", { Text = "No results", TextSize = 13, TextColor3 = "TextDim", Size = UDim2.new(1, 0, 0, 30), Visible = false, LayoutOrder = -1, Parent = searchPage })
@@ -3423,33 +3425,27 @@ function Mova:CreateWindow(props)
 	connect(closeBtn.MouseButton1Click, function() self:Hide() end)
 	connect(minBtn.MouseButton1Click, function() self:ToggleMinimise() end)
 	local searchOpen = false
-	local function fadeTitle(hidden)
-		local t = hidden and Motion.fast or Motion.slow
-		tween(titleLabel, { TextTransparency = hidden and 1 or 0 }, t)
-		if self.SubtitleLabel then tween(self.SubtitleLabel, { TextTransparency = hidden and 1 or 0 }, t) end
-		local mark = self._titleMark
-		if mark then
-			if mark:IsA("ImageLabel") then tween(mark, { ImageTransparency = hidden and 1 or 0 }, t) else tween(mark, { BackgroundTransparency = hidden and 1 or 0 }, t) end
-		end
-	end
+	local SEARCH_Y = TOPBAR + 10
 	local function setSearch(state)
 		if state == searchOpen then return end
 		searchOpen = state
 		if state then
 			searchHolder.Visible = true
-			searchHolder.Position = UDim2.new(0, 24, 0.5, 0)
-			fadeTitle(true)
+			searchHolder.Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6)
 			tintGlyph(searchGlyph, themeValue("Accent"))
-			tween(searchHolder, { Position = UDim2.new(0, 12, 0.5, 0), BackgroundTransparency = 0 }, 0.3, Motion.Expo, Motion.Out)
-			tween(searchStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.3)
+			tween(searchHolder, { Position = UDim2.new(0.5, sidebarWidth / 2, 0, SEARCH_Y), BackgroundTransparency = 0 }, 0.35, Motion.Expo, Motion.Out)
+			tween(searchStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.35)
+			tween(searchBox, { TextTransparency = 0 }, 0.35)
+			if searchShadow then tween(searchShadow, { Transparency = 0.6 }, 0.35) end
 			task.defer(function() pcall(function() searchBox:CaptureFocus() end) end)
 		else
 			searchBox.Text = ""
 			pcall(function() searchBox:ReleaseFocus() end)
-			fadeTitle(false)
 			tintGlyph(searchGlyph, themeValue("TextDim"), Motion.slow)
-			tween(searchHolder, { Position = UDim2.new(0, 24, 0.5, 0), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
+			tween(searchHolder, { Position = UDim2.new(0.5, sidebarWidth / 2, 0, TOPBAR - 6), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
 			tween(searchStroke, { Transparency = 1 }, Motion.base)
+			tween(searchBox, { TextTransparency = 1 }, Motion.base)
+			if searchShadow then tween(searchShadow, { Transparency = 1 }, Motion.base) end
 			task.delay(Motion.base + 0.01, function() if not searchOpen then searchHolder.Visible = false end end)
 		end
 	end
@@ -3713,6 +3709,20 @@ Window.Navigate = Window.SelectTab
 
 -- Search ------------------------------------------------------------------------------------------
 
+-- Obsidian-style forgiving match: every character of the query appears in order ("esp box" finds
+-- "ESP: show boxes"), used as a fallback when the plain substring search finds nothing.
+local function fuzzyMatch(text, query)
+	query = query:gsub("%s+", "")
+	if #query < 2 then return false end
+	local pos = 1
+	for i = 1, #query do
+		local found = text:find(query:sub(i, i), pos, true)
+		if not found then return false end
+		pos = found + 1
+	end
+	return true
+end
+
 function Window:_applySearch(query)
 	query = trim(query or ""):lower()
 	local page = self.SearchPage
@@ -3742,7 +3752,7 @@ function Window:_applySearch(query)
 	for i, el in ipairs(self._allElements) do
 		if not el.Destroyed and el.Card and el.Type ~= "Divider" then
 			local haystack = (tostring(el.Name or "") .. " " .. tostring(el.Description or "")):lower()
-			local match = haystack:find(query, 1, true) ~= nil
+			local match = haystack:find(query, 1, true) ~= nil or fuzzyMatch(haystack, query)
 			if match and el.Visible ~= false then
 				if not el._searchHome then
 					el._searchHome = el.Card.Parent
