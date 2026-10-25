@@ -941,7 +941,9 @@ end
 
 -- Press: cards shrink 8px symmetrically (pages centre their children) and spring back.
 local Pressing = {} -- card -> resting size while a press animation runs
+local Compact = {}  -- cards that share a row: no width bounce (it would shove the neighbours)
 local function pressFx(card)
+	if Compact[card] then return end
 	local size = Pressing[card] or card.Size
 	Pressing[card] = size
 	tween(card, { Size = UDim2.new(size.X.Scale, size.X.Offset - 8, size.Y.Scale, size.Y.Offset) }, 0.08, Motion.Quint, Motion.Out)
@@ -2930,8 +2932,25 @@ local Group = setmetatable({}, { __index = function(_, k)
 end })
 Group.__index = Group
 
+-- Rows are built from explicit line frames (one horizontal list per Columns children) instead of
+-- UIListLayout.Wraps + HorizontalFlex: wrapping/flex inside an AutomaticSize parent re-measures
+-- itself every time a child's size animates, which made the whole group blink in and out when a
+-- toggle inside it was tapped. Plain nested lists have no feedback loop.
+function Group:_newLine()
+	self._lines = (self._lines or 0) + 1
+	local line = New("Frame", {
+		Name = "GroupLine", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = self._lines, Parent = self.Frame,
+	})
+	List(line, self.Gap, Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
+	self._lineCount = 0
+	self.Holder = line
+	return line
+end
+
 function Group:_fit(el)
-	if typeof(el) ~= "table" then return end
+	if typeof(el) ~= "table" or el._fitted then return end -- alias wrappers (CreateRow -> CreateGroup) fit twice
+	el._fitted = true
 	local f = el.Card or el.Frame
 	if not f then return end
 	if self.Direction == Enum.FillDirection.Horizontal then
@@ -2940,6 +2959,9 @@ function Group:_fit(el)
 		local size = UDim2.new(1 / cols, -math.ceil(gap * (cols - 1) / cols), f.Size.Y.Scale, f.Size.Y.Offset)
 		f.Size = size
 		el._compactSize = size
+		Compact[f] = true
+		self._lineCount = (self._lineCount or 0) + 1
+		if self._lineCount >= cols then self:_newLine() end
 	end
 end
 
@@ -2961,13 +2983,7 @@ function Container:CreateGroup(props)
 		Name = "Group", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = self:_nextOrder(), Parent = self.Holder,
 	})
-	local layout = List(frame, gap, horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
-		Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-	if horizontal then
-		-- more children than Columns flow onto the next line; flex absorbs the rounding gap
-		pcall(function() layout.Wraps = true end)
-		pcall(function() layout.HorizontalFlex = Enum.UIFlexAlignment.Fill end)
-	end
+	local layout = List(frame, gap, Enum.FillDirection.Vertical, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
 
 	local group = setmetatable({
 		Type = "Group", Frame = frame, Holder = frame, Layout = layout,
@@ -2975,9 +2991,8 @@ function Container:CreateGroup(props)
 		Columns = columns, Gap = gap,
 		Window = self.Window, Tab = self.Tab or self, Elements = {}, _order = 0,
 	}, Group)
+	if horizontal then group:_newLine() end
 	self.Elements[#self.Elements + 1] = group
-	-- a column nested in a row shares the row's width like any other child
-	if getmetatable(self) == Group then self:_fit(group) end
 	return group
 end
 Container.CreateRow = function(self, props) props = props or {} props.Direction = "row" return self:CreateGroup(props) end
