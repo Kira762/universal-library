@@ -1774,8 +1774,9 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 
 	-- Responsive layout (Gen 2's narrow mode): when the card is too tight for the title and the
 	-- control to share a row - a phone, a resized window, a two-column group - the control drops
-	-- under the text and spans the card instead of being drawn over the title. Hysteresis keeps
-	-- it from flapping while the window's open/close scale animation sweeps the width.
+	-- under the text and spans the card instead of being drawn over the title. The decision uses
+	-- the title's real width (a short "Left" keeps its toggle beside it; a long name stacks) and
+	-- the window's unscaled width, so the open/close scale animation can't change the answer.
 	local cw = controlWidth or 0
 	if cw > 0 then
 		local restingText = textHolder.Size
@@ -1783,9 +1784,13 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 			if element.NoStack then return end
 			local w = card.AbsoluteSize.X
 			if w <= 0 then return end
+			local win = element.Window
+			local scale = win and win.MainScale and win.MainScale.Scale or 1
+			if scale > 0 then w = w / scale end
 			local room = w - leftPad - 14 - 8 - cw
-			local want = element.Stacked
-			if room < 96 then want = true elseif room > 128 then want = false end
+			local bounds = title.TextBounds
+			local need = clamp((bounds and bounds.X or 60) + 6, 44, 110)
+			local want = room < need
 			if want == element.Stacked then return end
 			element.Stacked = want
 			if want then
@@ -1803,6 +1808,7 @@ local function buildCard(container, props, kind, controlWidth, noStack)
 			end
 		end
 		connect(card:GetPropertyChangedSignal("AbsoluteSize"), applyLayout)
+		connect(title:GetPropertyChangedSignal("TextBounds"), applyLayout)
 		applyLayout()
 	end
 
@@ -3235,12 +3241,13 @@ function Mova:CreateWindow(props)
 	local titleX = 18
 	local iconImage = resolveIcon(self.Icon)
 	if iconImage then
-		New("ImageLabel", { Image = iconImage, Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(16, 13), Parent = topbar })
+		self._titleMark = New("ImageLabel", { Image = iconImage, Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(16, 13), Parent = topbar })
 		titleX = 48
 	else
 		-- accent mark when there is no icon
 		local mark = New("Frame", { BackgroundColor3 = "Accent", Size = UDim2.fromOffset(8, 8), Position = UDim2.fromOffset(16, 20), Parent = topbar })
 		Corner(4, mark)
+		self._titleMark = mark
 		titleX = 32
 	end
 	local titleLabel = New("TextLabel", {
@@ -3284,19 +3291,35 @@ function Mova:CreateWindow(props)
 	local minBtn, minGlyph = topButton("minus", 2)
 	local searchBtn, searchGlyph = topButton("search", 1)
 
-	-- search box
+	-- Search pill (Gen 2's search bar): while open it takes over the title side of the topbar as
+	-- one full-width pill - magnifier inside on the left, the field, and a clear button on the
+	-- right - instead of a small box floating next to the magnifier button. The title fades out
+	-- underneath it and back when it closes.
+	local SEARCH_RIGHT = 10 + 3 * 30 + 2 * 2 + 10 -- the three topbar buttons plus breathing room
 	local searchHolder = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.fromOffset(0, 30), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -110, 0.5, 0), ClipsDescendants = true, Visible = false, Parent = topbar,
+		Name = "Search", BackgroundColor3 = "Field", BackgroundTransparency = 1, Size = UDim2.new(1, -12 - SEARCH_RIGHT, 0, 32),
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ClipsDescendants = true, Visible = false, ZIndex = 3, Parent = topbar,
 	})
-	Corner(8, searchHolder)
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = searchHolder })
 	local searchStroke = Stroke(searchHolder)
+	searchStroke.Transparency = 1
+	local searchIconHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ZIndex = 4, Parent = searchHolder })
+	Glyph("search", searchIconHolder, "TextDim", 14, 1.6)
 	local searchBox = New("TextBox", {
-		Text = "", PlaceholderText = "Search...", PlaceholderColor3 = "Placeholder", TextSize = 13, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0),
-		TextXAlignment = Enum.TextXAlignment.Left, Parent = searchHolder,
+		Text = "", PlaceholderText = "Search all tabs", PlaceholderColor3 = "Placeholder", TextSize = 13, ClearTextOnFocus = false,
+		Size = UDim2.new(1, -36 - 34, 1, 0), Position = UDim2.fromOffset(36, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = searchHolder,
 	})
-	connect(searchBox.Focused, function() tween(searchStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+	local clearBtn = New("TextButton", {
+		Text = "", BackgroundColor3 = "Text", BackgroundTransparency = 1, Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -5, 0.5, 0), ZIndex = 5, Parent = searchHolder,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = clearBtn })
+	local clearGlyph = Glyph("close", clearBtn, "TextDim", 12, 1.6)
+	connect(clearBtn.MouseEnter, function() tween(clearBtn, { BackgroundTransparency = 0.92 }, Motion.fast) tintGlyph(clearGlyph, themeValue("Text")) end)
+	connect(clearBtn.MouseLeave, function() tween(clearBtn, { BackgroundTransparency = 1 }, Motion.base) tintGlyph(clearGlyph, themeValue("TextDim"), Motion.base) end)
+	connect(searchBox.Focused, function() tween(searchStroke, { Color = themeValue("Accent"), Transparency = 0.45 }, Motion.fast) end)
 	connect(searchBox.FocusLost, function() tween(searchStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
-	self.SearchBox = searchBox
+	self.SearchBox, self.SearchBar = searchBox, searchHolder
 
 	-- sidebar
 	local body = New("Frame", { Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -TOPBAR), Position = UDim2.fromOffset(0, TOPBAR), Parent = main })
@@ -3400,23 +3423,52 @@ function Mova:CreateWindow(props)
 	connect(closeBtn.MouseButton1Click, function() self:Hide() end)
 	connect(minBtn.MouseButton1Click, function() self:ToggleMinimise() end)
 	local searchOpen = false
+	local function fadeTitle(hidden)
+		local t = hidden and Motion.fast or Motion.slow
+		tween(titleLabel, { TextTransparency = hidden and 1 or 0 }, t)
+		if self.SubtitleLabel then tween(self.SubtitleLabel, { TextTransparency = hidden and 1 or 0 }, t) end
+		local mark = self._titleMark
+		if mark then
+			if mark:IsA("ImageLabel") then tween(mark, { ImageTransparency = hidden and 1 or 0 }, t) else tween(mark, { BackgroundTransparency = hidden and 1 or 0 }, t) end
+		end
+	end
 	local function setSearch(state)
+		if state == searchOpen then return end
 		searchOpen = state
 		if state then
 			searchHolder.Visible = true
+			searchHolder.Position = UDim2.new(0, 24, 0.5, 0)
+			fadeTitle(true)
 			tintGlyph(searchGlyph, themeValue("Accent"))
-			tween(searchHolder, { Size = UDim2.fromOffset(clamp(width - 420, 120, 220), 30) }, 0.3, Motion.Expo, Motion.Out)
+			tween(searchHolder, { Position = UDim2.new(0, 12, 0.5, 0), BackgroundTransparency = 0 }, 0.3, Motion.Expo, Motion.Out)
+			tween(searchStroke, { Transparency = CurrentTheme.StrokeTransparency }, 0.3)
 			task.defer(function() pcall(function() searchBox:CaptureFocus() end) end)
 		else
 			searchBox.Text = ""
+			pcall(function() searchBox:ReleaseFocus() end)
+			fadeTitle(false)
 			tintGlyph(searchGlyph, themeValue("TextDim"), Motion.slow)
-			tween(searchHolder, { Size = UDim2.fromOffset(0, 30) }, Motion.base, Motion.Quint, Motion.In)
+			tween(searchHolder, { Position = UDim2.new(0, 24, 0.5, 0), BackgroundTransparency = 1 }, Motion.base, Motion.Quint, Motion.In)
+			tween(searchStroke, { Transparency = 1 }, Motion.base)
 			task.delay(Motion.base + 0.01, function() if not searchOpen then searchHolder.Visible = false end end)
 		end
 	end
+	self._setSearch = setSearch
 	connect(searchBtn.MouseButton1Click, function() setSearch(not searchOpen) end)
-	connect(searchBox:GetPropertyChangedSignal("Text"), function() self:_applySearch(searchBox.Text) end)
+	connect(clearBtn.MouseButton1Click, function()
+		if searchBox.Text ~= "" then
+			searchBox.Text = ""
+			pcall(function() searchBox:CaptureFocus() end)
+		else
+			setSearch(false)
+		end
+	end)
+	connect(searchBox:GetPropertyChangedSignal("Text"), function()
+		clearBtn.Visible = true -- always reachable: clears text, or closes when empty
+		self:_applySearch(searchBox.Text)
+	end)
 	connect(searchBox.FocusLost, function(enter)
+		-- tapping away with nothing typed closes the pill; an empty Enter does too
 		if searchBox.Text == "" then setSearch(false) end
 	end)
 
