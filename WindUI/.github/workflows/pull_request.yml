@@ -1,0 +1,65 @@
+name: Build WindUI (Pull Request)
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+permissions:
+    contents: read
+
+jobs:
+    build-pr:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.pull_request.head.sha }}
+                  submodules: recursive
+
+            - uses: actions/setup-node@v5
+              with:
+                  node-version: 18
+
+            - run: npm install
+
+            - uses: leafo/gh-actions-lua@v11
+              with:
+                  luaVersion: "5.1"
+
+            - uses: ok-nick/setup-aftman@v0.3.0
+
+            - run: aftman install
+
+            - name: Run build
+              id: build
+              continue-on-error: true
+              shell: bash
+              run: npm run build 2>&1 | tee build.log
+
+            - name: Prepare result for comment
+              if: always()
+              shell: bash
+              env:
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+                  OUTCOME: ${{ steps.build.outcome }}
+              run: |
+                  mkdir -p pr-result
+                  echo "$PR_NUMBER" > pr-result/pr_number
+                  echo "$HEAD_SHA"  > pr-result/sha
+                  echo "$OUTCOME"   > pr-result/outcome
+                  [ -f build.log ] && tail -c 5000 build.log > pr-result/build.log || true
+
+                  USING_MAIN=false
+                  if [ -f main_example.lua ] && grep -qF "loadstring(game:HttpGet('https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/main.client.lua'))()" main_example.lua; then
+                    USING_MAIN=true
+                  fi
+                  echo "$USING_MAIN" > pr-result/using_main_client
+                  echo "https://raw.githubusercontent.com/${HEAD_REPO}/${HEAD_SHA}/dist/main.lua" > pr-result/raw_url
+
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: pr-result
+                  path: pr-result/

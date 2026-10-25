@@ -1,0 +1,45 @@
+name: Build WindUI (main)
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: "5.1"
+
+      - name: Setup Aftman
+        uses: ok-nick/setup-aftman@v0.3.0
+
+      - name: Install Rojo, Lune and DarkLua
+        run: aftman install
+
+      - name: Run build
+        run: npm run build
+
+      - name: Commit dist/main.lua back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/main.lua
+          git commit -m "[AUTO] Upload built main.lua" || exit 0
+          git push
