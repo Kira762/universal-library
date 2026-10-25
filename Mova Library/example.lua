@@ -32,7 +32,7 @@ local Window = Mova:CreateWindow({
 })
 
 -- 3. Tabs ----------------------------------------------------------------------------------
-local Main = Window:CreateTab({ Name = "Main", Icon = 0 })        -- Icon: rbxassetid number, "rbxassetid://…", or a Lucide name if you registered a resolver
+local Main = Window:CreateTab({ Name = "Main", Icon = "house" }) -- Icon: Lucide name, built-in name ("settings"), rbxassetid number or "rbxassetid://…"
 local Combat = Window:CreateTab({ Name = "Combat" })
 local Visuals = Window:CreateTab({ Name = "Visuals" })
 local Misc = Window:CreateTab({ Name = "Misc" })
@@ -158,6 +158,7 @@ Visuals:CreateColorPicker({
 
 
 Visuals:CreateLabel({ Name = "Labels can show icons", Icon = 4483362458 })
+Visuals:CreateLabel({ Name = "By Lucide name too", Icon = "eye" })
 Visuals:CreateLabel("Plain string works too")
 
 -- 7. Misc tab (Linoria/Obsidian style API, locking, dialogs, themes) ---------------------------

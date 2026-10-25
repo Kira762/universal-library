@@ -51,6 +51,13 @@ def run(modname: str) -> int:
         except Exception as exc:  # noqa: BLE001
             print("theme_audit FAILED:", exc)
             status["code"] = 1
+    if status["code"] == 0:
+        rt4 = lua.LuaRuntime(unpack_returned_tuples=True)
+        try:
+            rt4.execute("local chunk = assert(loadfile('tests/secure_check.lua')) chunk('tests/roblox_mock.lua')")
+        except Exception as exc:  # noqa: BLE001
+            print("secure_check FAILED:", exc)
+            status["code"] = 1
     return status["code"]
 
 

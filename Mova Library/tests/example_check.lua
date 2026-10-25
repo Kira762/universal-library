@@ -7,7 +7,12 @@ function Players:GetPlayers() return { { Name = "Tester" }, { Name = "Other" } }
 local MovaChunk = assert(loadfile("source.lua"))
 local MovaRef
 local realLoad = loadstring or load
-_G.loadstring = function() return function() MovaRef = MovaChunk() return MovaRef end end -- example.lua's loadstring(game:HttpGet(...))
+-- example.lua's loadstring(game:HttpGet(...)) yields the library; the icon-pack fetch gets a tiny Lucide stand-in
+mock.HttpGetResponse = function(url) if url:find("Footagesus/Icons", 1, true) then return 'return { house = "rbxassetid://1", eye = "rbxassetid://2" }' end return "" end
+_G.loadstring = function(src)
+	if src ~= "" then return realLoad(src) end
+	return function() MovaRef = MovaChunk() return MovaRef end
+end
 local src = io.open("example.lua"):read("*a")
 local fn = assert(realLoad(src, "example"))
 fn()
@@ -25,6 +30,7 @@ assert(MovaRef.Options.AutoFarm.TitleLabel.Text == "Granja automática", MovaRef
 MovaRef:SetLocale("en")
 local w = MovaRef.Windows[1]
 assert(w.Main.Size.X.Offset == 640 and w.Main.Size.Y.Offset == 440, "Vector2 Size honoured")
+assert(mock.find(w.Tabs[1].Button, function(x) return x.ClassName == "ImageLabel" and x.Image == "rbxassetid://1" end), "tab icon by Lucide name")
 w:Destroy()
 print(string.format("example ok: %d instances, config=%d bytes", mock.Created(), #mock.Files["MovaExample/default.mova.json"]))
 print(mock.Files["MovaExample/default.mova.json"]:sub(1, 300) .. " ...")

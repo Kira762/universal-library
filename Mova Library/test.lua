@@ -50,9 +50,10 @@ local Window = Mova:CreateWindow({
 	ConfigurationSaving = { Enabled = true, FolderName = "MovaTest" },
 })
 
-local Main = Window:CreateTab({ Name = "Main" })
-local Controls = Window:CreateTab({ Name = "Controls" })
-local Overlays = Window:CreateTab({ Name = "Overlays" })
+-- Icons: Lucide names ("house"), built-ins ("settings"), asset ids (4483362458) or "rbxassetid://…" all work
+local Main = Window:CreateTab({ Name = "Main", Icon = "house" })
+local Controls = Window:CreateTab({ Name = "Controls", Icon = "sliders-horizontal" })
+local Overlays = Window:CreateTab({ Name = "Overlays", Icon = "layers" })
 
 Main:CreateParagraph({ Title = "What to look at", Content = "Hover a card (wash + outline), click a button (press bounce), flip the toggle (knob squash + glow), switch tabs (indicator glides, page slides)." })
 Main:CreateButton({ Name = "Button", Description = "Chevron slides on hover, flashes on click.", Callback = function() print("clicked") end })
@@ -82,7 +83,8 @@ Controls:CreateToggle({ Name = "Locked toggle", Locked = true, LockReason = "Nee
 Overlays:CreateButton({ Name = "Notification (all 4 types)", Callback = function()
 	for i, t in ipairs({ "Info", "Success", "Warning", "Error" }) do
 		task.delay((i - 1) * 0.25, function()
-			Mova:Notify({ Title = t, Content = "Tap to dismiss. Hovering pauses the timer.", Type = t, Actions = i == 1 and { { Text = "Action" }, { Text = "Later" } } or nil })
+			local icons = { "info", "circle-check", "triangle-alert", "circle-x" }
+			Mova:Notify({ Title = t, Content = "Tap to dismiss. Hovering pauses the timer.", Type = t, Icon = icons[i], Actions = i == 1 and { { Text = "Action" }, { Text = "Later" } } or nil })
 		end)
 	end
 end })
@@ -94,4 +96,4 @@ Overlays:CreateButton({ Name = "Minimise / restore", Callback = function() Windo
 Overlays:CreateDropdown({ Name = "Theme", Options = Mova:GetThemeNames(), Default = "Mono", Save = false, Callback = function(t) Mova:SetTheme(t) end })
 Overlays:CreateButton({ Name = "Unload", Callback = function() Mova:Destroy() end })
 
-Mova:Notify({ Title = "Mova test ready", Content = "RightShift toggles the window. Settings tab has themes + configs.", Type = "Success", Duration = 5 })
+Mova:Notify({ Title = "Mova test ready", Content = "RightShift toggles the window. Settings tab has themes + configs.", Type = "Success", Icon = "bell", Duration = 5 })

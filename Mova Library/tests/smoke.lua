@@ -699,10 +699,49 @@ test("Window:Get / Set and Mova level helpers", function()
 	Mova:LoadConfiguration()
 end)
 
-test("Secure mode blocks raw asset ids", function()
+test("Icons: ids, built-in names, icon packs, spritesheets, resolver (Gen 2 style)", function()
 	eq(Mova.SecureMode, false)
+	local function iconOf(card) return mock.find(card, function(x) return x.ClassName == "ImageLabel" end) end
 	local l = Misc:CreateLabel({ Name = "Icon label", Icon = 123 })
-	truthy(mock.find(l.Card, function(x) return x.ClassName == "ImageLabel" and x.Image == "rbxassetid://123" end), "icon resolved in normal mode")
+	eq(iconOf(l.Card).Image, "rbxassetid://123", "number id")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "456" }).Card).Image, "rbxassetid://456", "digit string")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "rbxassetid://789" }).Card).Image, "rbxassetid://789", "rbxassetid string")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "rbxasset://textures/x.png" }).Card).Image, "rbxasset://textures/x.png", "rbxasset passthrough")
+	-- built-in names (same assets Rayfield Gen 2 ships) never need a download
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "settings" }).Card).Image, "rbxassetid://" .. Mova.Icons.settings, "built-in name")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = " Search " }).Card).Image, "rbxassetid://" .. Mova.Icons.search, "built-in name is case/space insensitive")
+	-- icon pack names: the index is fetched once from GitHub on first use
+	mock.HttpGetResponse = 'return { home = "rbxassetid://777", ["arrow-up"] = { Image = "rbxassetid://888", ImageRectSize = {48, 48}, ImageRectOffset = {96, 0} }, sword = 999 }'
+	eq(Mova:PreloadIcons(), true, "lucide pack loads")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "home" }).Card).Image, "rbxassetid://777", "lucide name")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "lucide:sword" }).Card).Image, "rbxassetid://999", "pack-qualified name, numeric entry")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "arrow_up" }).Card).Image, "rbxassetid://888", "underscore alias")
+	local sheet = iconOf(Misc:CreateLabel({ Name = "s", Icon = "arrow-up" }).Card)
+	eq(sheet.ImageRectSize.X, 48, "spritesheet rect size applied")
+	eq(sheet.ImageRectOffset.X, 96, "spritesheet rect offset applied")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "definitely-not-an-icon" }).Card), nil, "unknown name -> no icon, no error")
+	mock.HttpGetResponse = "this is not lua"
+	eq(Mova:PreloadIcons("broken"), false, "a pack that fails to load is reported, not thrown")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "broken:home" }).Card), nil, "names from a failed pack resolve to nothing")
+	mock.HttpGetResponse = nil
+	-- inline spritesheet cells (Rayfield 2022 getIcon shape and the explicit shape)
+	local cell = iconOf(Misc:CreateLabel({ Name = "s", Icon = { 16898613699, { 48, 48 }, { 563, 967 } } }).Card)
+	eq(cell.Image, "rbxassetid://16898613699") eq(cell.ImageRectOffset.Y, 967)
+	cell = iconOf(Misc:CreateLabel({ Name = "s", Icon = { Image = "rbxassetid://5", ImageRectSize = Vector2.new(24, 24), ImageRectOffset = Vector2.new(24, 0) } }).Card)
+	eq(cell.ImageRectSize.X, 24) eq(cell.ImageRectOffset.X, 24)
+	-- a custom resolver runs before everything else and may return any accepted form
+	Mova:SetIconResolver(function(name) if name == "mine" then return 4242 end end)
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "mine" }).Card).Image, "rbxassetid://4242", "custom resolver")
+	eq(iconOf(Misc:CreateLabel({ Name = "s", Icon = "settings" }).Card).Image, "rbxassetid://" .. Mova.Icons.settings, "resolver returning nil falls through")
+	Mova:SetIconResolver(nil)
+	-- the same path serves tabs and notifications
+	local iconTab = Window:CreateTab({ Name = "Iconic", Icon = "home" })
+	truthy(mock.find(iconTab.Button, function(x) return x.ClassName == "ImageLabel" and x.Image == "rbxassetid://777" end), "tab icon by name")
+	Mova:Notify({ Title = "Icon toast", Content = "x", Icon = "check", Duration = 1 })
+	local holder = mock.find(mock.CoreGui, function(x) return x.Name == "Notifications" end)
+	truthy(mock.find(holder, function(x) return x.ClassName == "ImageLabel" and x.Image == "rbxassetid://" .. Mova.Icons.check end), "notification icon by name")
+	eq(Mova:ResolveIcon("chevron").Image, "rbxassetid://" .. Mova.Icons.chevron, "public ResolveIcon")
+	mock.flush()
 end)
 
 test("Destroy everything", function()

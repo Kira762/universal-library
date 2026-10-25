@@ -27,7 +27,7 @@ The research in [`docs/roblox-ui-libraries-research.md`](../docs/roblox-ui-libra
 
 | Problem seen in the wild | Where | What Mova does instead |
 | --- | --- | --- |
-| Loads a marketplace model / asset ids on start, which is fingerprintable and breaks when the asset is moderated | Rayfield 2022, Kavo, Mercury | Drawn 100 % in code. The only images are the icons *you* pass in; secure mode even blocks raw asset ids. |
+| Loads a marketplace model / asset ids on start, which is fingerprintable and breaks when the asset is moderated | Rayfield 2022, Kavo, Mercury | Drawn 100 % in code. The only images are the icons *you* pass in; secure mode never hands an asset id to the engine (see Icons). |
 | Phones home (analytics / "prompt" endpoints / remote settings) | Rayfield 2022 & Gen 2 | **Zero network calls.** The only optional request is the key-system `KeyURL` you configure yourself. |
 | Multi-file loaders that fetch 10–30 modules via `HttpGet` | WindUI, Gen 2, Obsidian, Fluent | A single `loadstring`. Nothing else is fetched. |
 | Configs that only store flat values (Color3 / keybinds lost or stored lossy) | Rayfield 2022, Kavo, Orion | Typed JSON: `Color3`, `KeyCode`, `UserInputType`, arrays and colour + alpha round-trip exactly. Named configs, autoload and debounced autosave built in. |
@@ -84,7 +84,8 @@ While the repository is private, save `source.lua` as `mova.lua` in the executor
 - **Configs**: `Window:SaveConfig / LoadConfig / ListConfigs / DeleteConfig / SetAutoload`, autosave, built-in Settings tab UI for all of it.
 - **Key system**: drawn in code, local keys + remote list + custom `Validate` callback, saved keys, "Get key" copies the link.
 - **Localisation**: `Mova:SetTranslations{ es = { ["Auto farm"] = "Granja automática" } }` + `Mova:SetLocale("es")` relabels live.
-- **Secure mode**: `getgenv().MOVA_SECURE = true` before loading → no console output, raw asset ids rejected.
+- **Icons**: every `Icon` takes an asset id, `"rbxassetid://…"`, a Lucide name (`"house"`, 1 700+ names), a built-in name (`"settings"`), a spritesheet cell or your own resolver — see [Icons](#icons).
+- **Secure mode**: `getgenv().MOVA_SECURE = true` before loading → no console output, no GitHub icon index, asset ids served through a local PNG cache (Gen 2 style) instead of `rbxassetid://`.
 - **Compatibility**: pure Luau subset (no `continue`, `+=`, types) so it also runs on Lua 5.1 / LuaJIT / 5.4 — which is how the test-suite runs headless.
 
 ---
@@ -99,7 +100,7 @@ All option tables accept several aliases (Rayfield, Linoria/Obsidian and lower-c
 | --- | --- | --- | --- |
 | `Name` / `Title` | string | `"Mova"` | Title in the top bar, pill text, config folder name |
 | `Subtitle` | string | — | |
-| `Icon` | number \| string | — | `rbxassetid` number, `"rbxassetid://…"`, or a name handled by `Mova:SetIconResolver` |
+| `Icon` | number \| string \| table | — | Anything from the [Icons](#icons) section: asset id, `"rbxassetid://…"`, Lucide / built-in name, spritesheet cell |
 | `Theme` | string \| table | `"Mono"` | Any built-in name, a registered name, or a partial theme table |
 | `ToggleUIKeybind` / `ToggleKey` | string \| KeyCode | `"K"` | Show/hide key on desktop |
 | `Size` | UDim2 \| Vector2 \| `{w, h}` | 640×440 (560×340 mobile) | Clamped to the viewport |
@@ -194,10 +195,28 @@ Files are written to `<FolderName>/<name>.mova.json` (default folder `Mova/<Wind
 
 Loading calls each element's callback (so game state follows the config); pass `silent` yourself through `Window:Set(flag, value, true)` when you don't want that.
 
+### Icons
+
+Every `Icon` / `Image` option (window, tabs, labels, notifications, …) goes through the same resolver, modelled on Rayfield Gen 2's `assetResolver` plus Rayfield 2022's named Lucide icons:
+
+| You pass | Result |
+| --- | --- |
+| `4483362458`, `"4483362458"`, `"rbxassetid://4483362458"` | the asset |
+| `"rbxasset://…"` (e.g. a `getcustomasset` result), `"rbxthumb://…"` | passed through unchanged |
+| `"house"`, `"sliders-horizontal"`, `"lucide:bell"` | [Lucide](https://lucide.dev) by name — 1 700+ icons from [Footagesus/Icons](https://github.com/Footagesus/Icons) (MIT). The pack index is fetched from GitHub **once, on first use**; `"solar:home"` / `"craft:…"` / `"geist:…"` / `"sfsymbols:…"` / `"gravity:…"` pick another pack, `Mova:SetIconPack("solar")` changes the default |
+| `"settings"`, `"search"`, `"check"`, `"chevron"`, `"close"`, `"dot"`, `"minimise"`, `"maximise"`, `"config"`, `"banner"` | built-in ids (`Mova.Icons`, the same assets Rayfield Gen 2 ships) — no download |
+| `{ Image = …, ImageRectSize = Vector2, ImageRectOffset = Vector2 }` or `{ id, {w, h}, {x, y} }` | a spritesheet cell (Rayfield 2022 `getIcon` shape) |
+| anything your `Mova:SetIconResolver(fn)` returns | checked first, may return any form above |
+
+Unknown names simply show no icon (notifications fall back to their type dot). `Mova:PreloadIcons()` warms the index up front, `Mova:ResolveIcon(x)` exposes the resolver, and `Mova.IconPackURL = nil` turns pack downloads off entirely.
+
+**Secure mode** never passes an `rbxassetid://` to the engine and never contacts GitHub, so pack names resolve to nothing there. Asset ids (and the built-in names) still work the way Gen 2 does it: the PNG is downloaded once from Roblox's own `assetdelivery.roblox.com`, written to `Mova/icons/<id>.png`, and shown through `getcustomasset` — the icon fills in when the download lands, non-PNG bodies are never cached. Set `getgenv().MOVA_NO_ICON_CACHE = true` to disable that as well (icons are then blank in secure mode).
+
 ### Other
 
 ```lua
-Mova:SetIconResolver(function(nameOrId) return "rbxassetid://…" end)  -- plug in Lucide or your own icon pack
+Mova:SetIconResolver(function(nameOrId) return "rbxassetid://…" end)  -- runs before the built-in icon packs
+Mova:SetIconPack("solar"); Mova:PreloadIcons()                      -- see Icons
 Mova:SetTranslations({ es = { ["Main"] = "Principal" } }); Mova:SetLocale("es")
 Mova:SetVisibility(false); Mova:IsVisible()
 Mova:SaveConfiguration(); Mova:LoadConfiguration()   -- all windows
@@ -225,4 +244,4 @@ python3 tests/run.py          # Lua 5.4
 python3 tests/run.py --all    # Lua 5.1, LuaJIT and 5.4
 ```
 
-`tests/roblox_mock.lua` is a small headless model of Roblox (instances, signals, services, datatypes, a virtual file system, `task`) that is strict about things real Roblox rejects — e.g. custom fields on Instances or wrong property types. `tests/smoke.lua` drives every public API, and `tests/example_check.lua` runs `example.lua` so the docs can't drift from the code. It is not a renderer; always do a final check in an executor or Studio.
+`tests/roblox_mock.lua` is a small headless model of Roblox (instances, signals, services, datatypes, a virtual file system, `task`) that is strict about things real Roblox rejects — e.g. custom fields on Instances or wrong property types. `tests/smoke.lua` drives every public API, `tests/example_check.lua` runs `example.lua` so the docs can't drift from the code, `tests/theme_audit.lua` checks contrast for every theme and `tests/secure_check.lua` runs the secure-mode icon cache. It is not a renderer; always do a final check in an executor or Studio.

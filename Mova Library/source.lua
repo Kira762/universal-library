@@ -5,7 +5,8 @@
 
 	Design goals (learned from Rayfield 2022 / Gen2, Obsidian, Linoria, WindUI, Fluent, Aetheris):
 	  * Drawn 100% in code. No marketplace model, no asset ids by default -> nothing to fingerprint.
-	  * Zero telemetry. Mova never makes a network request on its own.
+	  * Zero telemetry. The only requests Mova ever makes are the ones you ask for: a key-system URL,
+	    or the Lucide icon index the first time you pass an icon *name* (never in secure mode).
 	  * One file, one loadstring, no dependencies.
 	  * Live themes (registry based, tweened), 8 built-in, custom tables accepted.
 	  * Typed JSON config saving (Color3 / KeyCode / tables round-trip), multiple named configs.
@@ -16,7 +17,9 @@
 	    dropdown with type-to-filter + multi select, HSV colour picker with alpha + hex.
 	  * Mobile first: touch drag, floating open button, auto-fit to viewport, resizable on desktop.
 	  * Built-in key system (drawn in code), notifications, dialogs, settings tab, localisation.
-	  * Secure mode (getgenv().MOVA_SECURE = true): silent console, raw asset ids blocked.
+	  * Icons like Rayfield Gen 2: asset ids, rbxassetid:// strings, built-in names, Lucide names,
+	    spritesheet cells, custom resolver. Secure mode (getgenv().MOVA_SECURE = true): silent console,
+	    asset ids served through a local PNG cache instead of rbxassetid://.
 
 	License: MIT. See LICENSE in the Mova Library folder.
 
@@ -245,39 +248,243 @@ end
 
 ---------------------------------------------------------------------------------------------------
 -- Icons
--- Accepts: number (asset id), "rbxassetid://..." string, getcustomasset result ("rbxasset://..."),
--- or a name resolved through Mova:SetIconResolver(fn). Secure mode blocks anything that is not
--- a local custom asset.
+-- Every Icon / Image property in the library (window, tabs, elements, notifications) accepts:
+--   * 4483362458, "4483362458", "rbxassetid://4483362458"           asset ids
+--   * "rbxasset://..." (getcustomasset results, engine content), "rbxthumb://..."
+--   * "home", "lucide:home", "solar:home"                             icon-pack names. The pack index
+--     (Footagesus/Icons, MIT) is fetched once on first use, only when you pass a name, never in
+--     secure mode. Change the default pack with Mova:SetIconPack("solar") or warm it with
+--     Mova:PreloadIcons().
+--   * "settings", "search", "check", "chevron", "close", "dot" ...   built-in names (Mova.Icons,
+--     the same assets Rayfield Gen 2 ships), resolved without any download
+--   * { Image = ..., ImageRectSize = Vector2, ImageRectOffset = Vector2 }  spritesheet cells
+--   * whatever your Mova:SetIconResolver(fn) returns for a name
+-- Secure mode never hands an asset id to the engine. Like Rayfield Gen 2 the PNG is downloaded from
+-- Roblox's own asset delivery once into Mova/icons/ and shown through getcustomasset; the label
+-- fills in when the download lands. getgenv().MOVA_NO_ICON_CACHE = true disables that too.
 ---------------------------------------------------------------------------------------------------
+
+local SETTINGS_FOLDER = "Mova"
+local ICON_CACHE_FOLDER = SETTINGS_FOLDER .. "/icons"
+local NoIconCache = readGlobal("MOVA_NO_ICON_CACHE") == true
 
 local IconResolver = nil
 function Mova:SetIconResolver(fn)
 	IconResolver = fn
 end
 
-local function resolveIcon(icon)
-	if icon == nil or icon == 0 or icon == "" then return nil end
-	local out
-	if typeof(icon) == "number" then
-		out = "rbxassetid://" .. tostring(icon)
-	elseif typeof(icon) == "string" then
-		if icon:match("^rbx%a+://") or icon:match("^http") then
-			out = icon
-		elseif icon:match("^%d+$") then
-			out = "rbxassetid://" .. icon
-		elseif IconResolver then
-			local ok, res = pcall(IconResolver, icon)
-			if ok and res then out = resolveIcon(res) end
-		end
-	end
-	if out and SecureMode then
-		-- only per-machine custom assets and player thumbnails are allowed in secure mode
-		if not (out:match("^rbxasset://") or out:match("^rbxthumb://")) then
-			return nil
-		end
-	end
-	return out
+Mova.IconPack = "lucide"
+Mova.IconPackURL = "https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/%s/dist/Icons.lua"
+Mova.Icons = {
+	settings = 129180860773723, search = 100604009889706, check = 125626312718314, chevron = 88479147175134,
+	close = 83277910885129, minimise = 108115485663409, minimize = 108115485663409,
+	maximise = 88738500661569, maximize = 88738500661569, dot = 91452555903853, circle = 91452555903853,
+	banner = 111263549366178, config = 125823673784681, rayfield = 80387863064905,
+}
+
+function Mova:SetIconPack(name)
+	assert(type(name) == "string" and name ~= "", "SetIconPack expects a pack name")
+	Mova.IconPack = name:lower()
 end
+
+local IconPacks = {} -- pack -> table | false (load failed, do not retry)
+local function loadIconPack(pack)
+	local cached = IconPacks[pack]
+	if cached ~= nil then return cached or nil end
+	IconPacks[pack] = false
+	if SecureMode or type(Mova.IconPackURL) ~= "string" then return nil end
+	local ok, tbl = pcall(function()
+		local src = game:HttpGet(string.format(Mova.IconPackURL, pack))
+		local chunk = assert((loadstring or load)(src))
+		return chunk()
+	end)
+	if ok and type(tbl) == "table" then
+		IconPacks[pack] = tbl
+		return tbl
+	end
+	warn("[Mova] icon pack '" .. pack .. "' could not be loaded" .. (ok and "" or (": " .. tostring(tbl))))
+	return nil
+end
+
+function Mova:PreloadIcons(pack)
+	return loadIconPack((pack or Mova.IconPack):lower()) ~= nil
+end
+
+local function iconSpec(image, rectSize, rectOffset)
+	return { Image = image, RectSize = rectSize, RectOffset = rectOffset }
+end
+
+local function toVector2(v)
+	if typeof(v) == "Vector2" then return v end
+	if type(v) == "table" then
+		local x, y = v[1] or v.X or v.x, v[2] or v.Y or v.y
+		if type(x) == "number" and type(y) == "number" then return Vector2.new(x, y) end
+	end
+	return nil
+end
+
+-- Secure-mode asset cache: Mova/icons/<id>.png shown through getcustomasset.
+local IconCache = { uris = {}, waiting = {}, failed = {} }
+local PNG_MAGIC = "\137PNG\r\n\26\n"
+Mova.IconCacheURLs = { -- tried in order; same endpoints Rayfield Gen 2 uses
+	"https://assetdelivery.roblox.com/v1/asset/?id=%s",
+	"https://assetdelivery.roproxy.com/v1/asset/?id=%s",
+}
+
+local function httpRequest(url)
+	local fn = (typeof(request) == "function" and request)
+		or (typeof(http_request) == "function" and http_request)
+		or (typeof(syn) == "table" and typeof(syn.request) == "function" and syn.request)
+		or (typeof(fluxus) == "table" and typeof(fluxus.request) == "function" and fluxus.request)
+		or (typeof(http) == "table" and typeof(http.request) == "function" and http.request)
+	if fn then
+		local ok, res = pcall(fn, { Url = url, Method = "GET" })
+		if ok and type(res) == "table" and type(res.Body) == "string" and (res.StatusCode == 200 or res.Success == true) then
+			return res.Body
+		end
+		return nil
+	end
+	local ok, body = pcall(function() return game:HttpGet(url) end)
+	if ok and type(body) == "string" and body ~= "" then return body end
+	return nil
+end
+
+local function customAsset(path)
+	local ok, res = pcall(FS.getcustomasset, path)
+	if ok and type(res) == "string" and res ~= "" then return res end
+	return nil
+end
+
+local function cachedAsset(id)
+	local uri = IconCache.uris[id]
+	if uri then return iconSpec(uri) end
+	if NoIconCache or not FS.available or not FS.getcustomasset or IconCache.failed[id] then return nil end
+	local path = ICON_CACHE_FOLDER .. "/" .. tostring(id) .. ".png"
+	if FS.isfile(path) then
+		uri = customAsset(path)
+		if uri then
+			IconCache.uris[id] = uri
+			return iconSpec(uri)
+		end
+	end
+	if not IconCache.waiting[id] then
+		IconCache.waiting[id] = {}
+		task.spawn(function()
+			local body
+			for _, base in ipairs(Mova.IconCacheURLs) do
+				body = httpRequest(string.format(base, tostring(id)))
+				if body and body:sub(1, 8) == PNG_MAGIC then break end
+				body = nil
+			end
+			local out
+			-- only ever write a real PNG: an error page cached to disk would shadow the asset forever
+			if body and FS.ensureFolder(SETTINGS_FOLDER) and FS.ensureFolder(ICON_CACHE_FOLDER) then
+				FS.writefile(path, body)
+				out = customAsset(path)
+			end
+			local waiters = IconCache.waiting[id] or {}
+			IconCache.waiting[id] = nil
+			if out then
+				IconCache.uris[id] = out
+				for _, label in ipairs(waiters) do
+					if label.Parent then label.Image = out end
+				end
+			else
+				IconCache.failed[id] = true
+			end
+		end)
+	end
+	return { Image = "", Pending = id }
+end
+
+local resolveIcon
+local function iconFromEntry(entry, depth)
+	-- pack / resolver results: "rbxassetid://..", 123, { Image = .., ImageRectSize = .., ImageRectOffset = .. },
+	-- WindUI's { Image, ImageRectSize, ImageRectPosition } or Rayfield 2022's { id, {w, h}, {x, y} }
+	if entry.Pending then return entry end -- an already-resolved spec waiting on the secure-mode cache
+	local image = entry.Image or entry.image or entry.Id or entry.id or entry[1]
+	local spec = resolveIcon(image, depth)
+	if not spec then return nil end
+	spec.RectSize = toVector2(entry.ImageRectSize or entry.imageRectSize or entry.RectSize or entry[2]) or spec.RectSize
+	spec.RectOffset = toVector2(entry.ImageRectOffset or entry.imageRectOffset or entry.ImageRectPosition or entry.RectOffset or entry[3]) or spec.RectOffset
+	return spec
+end
+
+local function iconFromName(name, depth)
+	if IconResolver then
+		local ok, res = pcall(IconResolver, name)
+		if ok and res ~= nil and res ~= name then
+			return resolveIcon(res, depth)
+		end
+	end
+	local key = name:lower()
+	local pack, short = key:match("^([%w%-_]+):(.+)$")
+	if not pack then pack, short = Mova.IconPack, key end
+	short = trim(short)
+	local builtin = (pack == Mova.IconPack or pack == "mova") and Mova.Icons[short] or nil
+	if builtin ~= nil then return resolveIcon(builtin, depth) end
+	if pack == "mova" then return nil end
+	local tbl = loadIconPack(pack)
+	if not tbl then return nil end
+	local entry = tbl[short] or tbl[(short:gsub("[_%s]", "-"))] or tbl[(short:gsub("[%-%s]", "_"))]
+	if entry == nil then return nil end
+	return resolveIcon(entry, depth)
+end
+
+resolveIcon = function(icon, depth)
+	depth = (depth or 0) + 1
+	if depth > 4 or icon == nil or icon == 0 or icon == "" or icon == false then return nil end
+	local kind = typeof(icon)
+	if kind == "table" then return iconFromEntry(icon, depth) end
+	local id, uri
+	if kind == "number" then
+		id = math.floor(icon)
+	elseif kind == "string" then
+		local s = trim(icon)
+		if s == "" then return nil end
+		if s:match("^%d+$") then
+			id = tonumber(s)
+		elseif s:match("^rbxassetid://%d+$") then
+			id = tonumber(s:match("%d+"))
+		elseif s:match("^rbx%a+://") then
+			uri = s
+		else
+			return iconFromName(s, depth)
+		end
+	else
+		return nil
+	end
+	if uri then
+		-- only per-machine custom assets and player thumbnails are allowed in secure mode
+		if SecureMode and not (uri:match("^rbxasset://") or uri:match("^rbxthumb://")) then return nil end
+		return iconSpec(uri)
+	end
+	if not id or id <= 0 then return nil end
+	if SecureMode then return cachedAsset(id) end
+	return iconSpec("rbxassetid://" .. tostring(id))
+end
+
+-- Writes a resolved spec onto an ImageLabel / ImageButton (rect fields included, pending cache hooked up).
+local function applyIcon(obj, spec)
+	if not spec then
+		obj.Image = ""
+		return false
+	end
+	obj.Image = spec.Image or ""
+	if spec.RectSize then obj.ImageRectSize = spec.RectSize end
+	if spec.RectOffset then obj.ImageRectOffset = spec.RectOffset end
+	if spec.Pending then
+		local ready = IconCache.uris[spec.Pending]
+		if ready then
+			obj.Image = ready -- the download finished before the label existed
+		else
+			local waiters = IconCache.waiting[spec.Pending]
+			if waiters then table.insert(waiters, obj) end
+		end
+	end
+	return true
+end
+Mova.ResolveIcon = function(_, icon) return resolveIcon(icon) end
 
 ---------------------------------------------------------------------------------------------------
 -- Themes
@@ -694,7 +901,7 @@ local function New(className, props, children)
 			themeMap = themeMap or {}
 			themeMap[key] = value
 		elseif key == "Image" and className:match("^Image") then
-			obj.Image = resolveIcon(value) or ""
+			applyIcon(obj, resolveIcon(value))
 		else
 			obj[key] = value
 		end
@@ -3245,8 +3452,6 @@ end
 
 local Window = {}
 Window.__index = Window
-
-local SETTINGS_FOLDER = "Mova"
 
 function Mova:CreateWindow(props)
 	props = props or {}

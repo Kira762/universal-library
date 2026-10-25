@@ -441,7 +441,7 @@ _G.workspace = { CurrentCamera = Camera }
 
 _G.game = setmetatable({}, { __index = function(_, k)
 	if k == "GetService" then return function(_, name) return Services[name] or error("unknown service " .. tostring(name)) end end
-	if k == "HttpGet" then return function(_, url) return M.HttpGetResponse or "" end end
+	if k == "HttpGet" then return function(_, url) local r = M.HttpGetResponse if type(r) == "function" then r = r(url) end return r or "" end end
 	if k == "Players" then return Services.Players end
 	if k == "CoreGui" then return CoreGui end
 	return nil
