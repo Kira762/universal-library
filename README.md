@@ -1,8 +1,22 @@
 # universal-library
 
-Reference collection of open-source Roblox UI libraries, one folder per library at the repo root.
-Each folder is a snapshot of the upstream default branch (no `.git`, pinned commit listed below).
+Reference collection of open-source Roblox UI libraries, one folder per library at the repo root,
+plus **Mova Library** — an original library built after studying all of them.
+Each vendored folder is a snapshot of the upstream default branch (no `.git`, pinned commit listed below).
 Research notes live in [`docs/`](docs/).
+
+## Mova Library (original)
+
+[`Mova Library/`](Mova%20Library/) — single-file, MIT, drawn 100 % in code, zero telemetry, typed JSON configs,
+live themes, Rayfield **and** Linoria/Obsidian style APIs, search across tabs, keybind modes, mobile support,
+built-in key system / settings tab, and a headless test-suite. See its [README](Mova%20Library/README.md) and
+[`example.lua`](Mova%20Library/example.lua).
+
+```lua
+local Mova = loadstring(game:HttpGet("https://raw.githubusercontent.com/Kira762/universal-library/main/Mova%20Library/source.lua"))()
+```
+
+## Vendored libraries
 
 | Folder | Upstream | Commit | License |
 | --- | --- | --- | --- |
