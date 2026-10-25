@@ -165,6 +165,39 @@ test("Controls drop under the title on narrow cards and come back when there is 
 	eq(b.Stacked, false)
 end)
 
+test("Dropdown summary, change detection, soft focus ring, dismissable dialog", function()
+	local d = Combat:CreateDropdown({ Name = "Many", Options = { "A", "B", "C", "D" }, Multi = true, Default = { "A", "B", "C", "D" } })
+	local lbl = mock.find(d.Card, function(x) return x.ClassName == "TextLabel" and x.Text:find("+", 1, true) end)
+	truthy(lbl and lbl.Text == "A, B +2", "multi summary collapses past two items")
+	local fired = 0
+	d:OnChanged(function() fired = fired + 1 end)
+	d:Set({ "A", "B", "C", "D" }, true)
+	eq(fired, 0, "setting the same selection does not report a change")
+	d:Set({ "A" }, true)
+	eq(fired, 1)
+	-- focused inputs get a 45% accent ring, not a solid outline
+	local inp = Combat:CreateInput({ Name = "Ring", Default = "" })
+	local box = mock.find(inp.Card, function(x) return x.ClassName == "TextBox" end)
+	local ring = mock.find(inp.Card, function(x) return x.ClassName == "UIStroke" and x.Parent == box.Parent end)
+	box.Focused:Fire()
+	for _ = 1, 10 do mock.flush() end
+	eq(ring.Transparency, 0.45, "soft focus ring")
+	box:ReleaseFocus()
+	-- dismissable dialog closes from the scrim, a normal one does not
+	local dlg = Mova:Dialog({ Title = "T", Content = "C", Dismissable = true })
+	local scrim = dlg.Instance.Parent
+	mock.click(scrim)
+	for _ = 1, 10 do mock.flush() end
+	eq(scrim.Parent, nil, "dismissable dialog is gone after tapping outside")
+	local dlg2 = Mova:Dialog({ Title = "T", Content = "C" })
+	local scrim2 = dlg2.Instance.Parent
+	mock.click(scrim2)
+	for _ = 1, 10 do mock.flush() end
+	truthy(scrim2.Parent ~= nil, "modal dialog stays")
+	dlg2:Close()
+	for _ = 1, 10 do mock.flush() end
+end)
+
 test("Group (Gen 2 layout container)", function()
 	local row = Combat:CreateGroup({ Direction = "row", Columns = 2 })
 	local a = row:CreateToggle({ Name = "Row A", Default = true })

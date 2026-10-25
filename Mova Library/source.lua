@@ -221,6 +221,15 @@ local function connect(signal, fn)
 	if not signal then return nil end
 	local c = signal:Connect(fn)
 	Connections[#Connections + 1] = c
+	-- rebuilt UI (dropdown rows, popups) leaves disconnected entries behind; compact now and then
+	if #Connections > 1500 then
+		local live = {}
+		for _, conn in ipairs(Connections) do
+			local ok, connected = pcall(function() return conn.Connected end)
+			if not ok or connected ~= false then live[#live + 1] = conn end
+		end
+		Connections = live
+	end
 	return c
 end
 
@@ -779,6 +788,18 @@ local Motion = {
 	In = Enum.EasingDirection.In,
 	InOut = Enum.EasingDirection.InOut,
 }
+
+-- Focus / open state for fields: a soft accent ring (45% transparent) rather than a solid
+-- outline, so focused inputs read as "active" without adding a hard border to the design.
+local function focusRing(stroke, on, time)
+	if not stroke then return end
+	if on then
+		tween(stroke, { Color = themeValue("Accent"), Transparency = 0.45 }, time or Motion.fast)
+	else
+		tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, time or Motion.base)
+	end
+end
+
 
 -- UIShadow (2025+ engine) gives real soft shadows/glows without any image asset. Optional.
 local HasUIShadow = pcall(function()
@@ -1451,9 +1472,10 @@ function Mova:Notify(props)
 		-- quiet countdown line in the text colour, not the type colour
 		progress = New("Frame", {
 			BackgroundColor3 = "TextDim", BackgroundTransparency = 0.7,
-			Size = UDim2.new(1, 32, 0, 2), Position = UDim2.new(0, -14, 1, 12), AnchorPoint = Vector2.new(0, 1),
+			Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, 8), AnchorPoint = Vector2.new(0, 1),
 			Parent = card,
 		})
+		Corner(1, progress)
 		tween(progress, { Size = UDim2.new(0, 0, 0, 2) }, duration, Enum.EasingStyle.Linear)
 		task.delay(duration, close)
 	end
@@ -1474,6 +1496,7 @@ function Mova:Dialog(props)
 	local title = prop(props, "Dialog", "Title", "title")
 	local content = prop(props, "", "Content", "content", "Text")
 	local buttons = prop(props, { { Text = "OK" } }, "Buttons", "buttons", "Options", "Actions")
+	local dismissable = prop(props, false, "Dismissable", "dismissable", "CloseOnClickOutside")
 
 	local dim = New("TextButton", {
 		Text = "", BackgroundColor3 = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), AutoButtonColor = false,
@@ -1553,6 +1576,13 @@ function Mova:Dialog(props)
 			handle:Close()
 			safeCallback(prop(b, nil, "Callback", "callback", "Func"))
 		end)
+	end
+	if dismissable then
+		connect(dim.MouseButton1Click, function() handle:Close() end)
+		-- clicks on the card itself must not bubble to the scrim
+		local shield = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, AutoButtonColor = false, Parent = card })
+		shield.Position = UDim2.fromOffset(-18, -18)
+		shield.Size = UDim2.new(1, 36, 1, 36)
 	end
 	handle.Instance = card
 	return handle
@@ -2011,8 +2041,8 @@ function Container:CreateSlider(props)
 	})
 	Corner(7, valueBox)
 	local valueStroke = Stroke(valueBox)
-	connect(valueBox.Focused, function() tween(valueStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
-	connect(valueBox.FocusLost, function() tween(valueStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
+	connect(valueBox.Focused, function() focusRing(valueStroke, true) end)
+	connect(valueBox.FocusLost, function() focusRing(valueStroke, false) end)
 
 	-- Rayfield Gen 2 slider: a 14px rounded track, a gradient fill, and a wide pill handle that
 	-- rides the fill's leading edge (it lives inside the fill, so the fill carries it). While held
@@ -2180,11 +2210,9 @@ function Container:CreateInput(props)
 	function el:Get() return self.Value end
 	function el:SetPlaceholder(t) box.PlaceholderText = t return self end
 
-	connect(box.Focused, function()
-		tween(stroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
-	end)
+	connect(box.Focused, function() focusRing(stroke, true) end)
 	connect(box.FocusLost, function(enterPressed)
-		tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+		focusRing(stroke, false)
 		if el.Locked then box.Text = el.Value return end
 		el:Set(box.Text, not finished)
 		if clearOnFocus then
@@ -2250,7 +2278,12 @@ function Container:CreateDropdown(props)
 		if empty then
 			valueLabel.Text = placeholder
 		elseif el.Multi then
-			valueLabel.Text = table.concat(el.Value, ", ")
+			-- "A, B" or "A, B +3": the field is narrow, a long comma list just truncates to nothing useful
+			if #el.Value <= 2 then
+				valueLabel.Text = table.concat(el.Value, ", ")
+			else
+				valueLabel.Text = tostring(el.Value[1]) .. ", " .. tostring(el.Value[2]) .. " +" .. (#el.Value - 2)
+			end
 		else
 			valueLabel.Text = tostring(el.Value)
 		end
@@ -2326,7 +2359,7 @@ function Container:CreateDropdown(props)
 		if not open then return end
 		open = false
 		tween(chevron, { Rotation = 0 }, Motion.base, Motion.Back, Motion.Out)
-		tween(stroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base)
+		focusRing(stroke, false)
 		if listFrame then
 			local f = listFrame
 			listFrame, listScroll, listSearch = nil, nil, nil
@@ -2340,7 +2373,7 @@ function Container:CreateDropdown(props)
 		if el.Locked or open then return end
 		open = true
 		tween(chevron, { Rotation = 180 }, Motion.base, Motion.Back, Motion.Out)
-		tween(stroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
+		focusRing(stroke, true)
 		local root = getRoot()
 		listFrame = New("Frame", {
 			BackgroundColor3 = "Surface", Size = UDim2.fromOffset(160, 40), ZIndex = 60, ClipsDescendants = true, Parent = Layers.popup,
@@ -2359,8 +2392,8 @@ function Container:CreateDropdown(props)
 				Text = "", PlaceholderText = "Search...", PlaceholderColor3 = "Placeholder", TextSize = 13, ZIndex = 62,
 				Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = sf,
 			})
-			connect(sb.Focused, function() tween(sfStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
-			connect(sb.FocusLost, function() tween(sfStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
+			connect(sb.Focused, function() focusRing(sfStroke, true) end)
+			connect(sb.FocusLost, function() focusRing(sfStroke, false) end)
 			listSearch = sb
 			connect(sb:GetPropertyChangedSignal("Text"), function() rebuildRows(sb.Text) end)
 		end
@@ -2382,7 +2415,16 @@ function Container:CreateDropdown(props)
 		if open then closePopup() else openList() end
 	end)
 
+	local function sameValue(a, b)
+		if typeof(a) == "table" and typeof(b) == "table" then
+			if #a ~= #b then return false end
+			for i = 1, #a do if a[i] ~= b[i] then return false end end
+			return true
+		end
+		return a == b
+	end
 	function el:Set(value, silent)
+		local before = self.Value
 		if self.Multi then
 			local newValue = {}
 			if typeof(value) == "table" then
@@ -2404,7 +2446,7 @@ function Container:CreateDropdown(props)
 		display()
 		syncFlag(self)
 		if not silent then safeCallback(self.Callback, self.Value, self) end
-		self:_fireChanged()
+		if not sameValue(before, self.Value) then self:_fireChanged() end
 		return self
 	end
 	el.SetValue = el.Set
@@ -2543,7 +2585,7 @@ function Container:_createKeybind(props, attachedToggle)
 			-- window's toggle-key listener may run after us on the same press (Gen 2 does this too)
 			task.defer(function() if ActiveKeybindListener == nil then KeybindListening = false end end)
 		end
-		tween(stroke, { Color = state and themeValue("Accent") or themeValue("Stroke"), Transparency = state and 0 or CurrentTheme.StrokeTransparency }, Motion.fast)
+		focusRing(stroke, state, Motion.fast)
 		render(true)
 	end
 	el._cleanup[#el._cleanup + 1] = function() if listening then setListening(false) end end
@@ -2703,7 +2745,7 @@ function Container:CreateColorPicker(props)
 		open = true
 		local root = getRoot()
 		local width, height = 230, useAlpha and 258 or 232
-		tween(swatchStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast)
+		focusRing(swatchStroke, true)
 		panel = New("Frame", { BackgroundColor3 = "Surface", ZIndex = 60, ClipsDescendants = true, Parent = Layers.popup })
 		Corner(nil, panel)
 		Stroke(panel)
@@ -3344,8 +3386,8 @@ function Mova:CreateWindow(props)
 	local clearGlyph = Glyph("close", clearBtn, "TextDim", 12, 1.6)
 	connect(clearBtn.MouseEnter, function() tween(clearBtn, { BackgroundTransparency = 0.92 }, Motion.fast) tintGlyph(clearGlyph, themeValue("Text")) end)
 	connect(clearBtn.MouseLeave, function() tween(clearBtn, { BackgroundTransparency = 1 }, Motion.base) tintGlyph(clearGlyph, themeValue("TextDim"), Motion.base) end)
-	connect(searchBox.Focused, function() tween(searchStroke, { Color = themeValue("Accent"), Transparency = 0.45 }, Motion.fast) end)
-	connect(searchBox.FocusLost, function() tween(searchStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
+	connect(searchBox.Focused, function() focusRing(searchStroke, true) end)
+	connect(searchBox.FocusLost, function() if searchHolder.Visible then focusRing(searchStroke, false) end end)
 	self.SearchBox, self.SearchBar = searchBox, searchHolder
 
 	-- sidebar
@@ -3631,6 +3673,7 @@ function Window:CreateTab(props, icon)
 	List(page, 6, nil, Enum.HorizontalAlignment.Center)
 
 	tab.Button, tab.Label, tab.Stroke, tab.Hover, tab.Page, tab.Holder, tab.Icon = button, label, buttonStroke, hover, page, page, button:FindFirstChild("Icon")
+	tab._labelX = labelX
 
 	connect(button.MouseEnter, function()
 		if self.CurrentTab ~= tab then
@@ -3694,7 +3737,10 @@ function Window:SelectTab(target)
 		tween(previous.Button, { BackgroundTransparency = 1 }, Motion.base)
 		tween(previous.Label, { TextColor3 = themeValue("TextDim") }, Motion.base)
 		setFont(previous.Label, "Medium")
-		if previous.Icon then tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.base) end
+		if previous.Icon then
+			tween(previous.Icon, { ImageColor3 = themeValue("TextDim") }, Motion.base)
+			ThemeRegistry[previous.Icon] = { ImageColor3 = "TextDim" }
+		end
 		ThemeRegistry[previous.Label] = { TextColor3 = "TextDim", FontFace = "@Medium" }
 	end
 	-- sidebar: selected pill + gliding indicator
@@ -3702,12 +3748,19 @@ function Window:SelectTab(target)
 	tween(target.Button, { BackgroundTransparency = 0 }, Motion.base)
 	tween(target.Label, { TextColor3 = themeValue("Text") }, Motion.base)
 	setFont(target.Label, "SemiBold")
-	if target.Icon then tween(target.Icon, { ImageColor3 = themeValue("Accent") }, Motion.base) end
+	if target.Icon then
+		tween(target.Icon, { ImageColor3 = themeValue("Accent") }, Motion.base)
+		ThemeRegistry[target.Icon] = { ImageColor3 = "Accent" }
+	end
 	ThemeRegistry[target.Label] = { TextColor3 = "Text", FontFace = "@SemiBold" }
-	-- the label nudges right a touch so the change is felt, not just seen (the list layout owns the button's Position)
-	local lx = target.Label.Position.X.Offset
-	target.Label.Position = UDim2.fromOffset(lx - 4, 0)
-	tween(target.Label, { Position = UDim2.fromOffset(lx, 0) }, 0.35, Motion.Expo, Motion.Out)
+	-- the label nudges right a touch so the change is felt, not just seen (the list layout owns the
+	-- button's Position). Always relative to the label's resting x, never to wherever a running
+	-- tween left it, so rapid tab switching can't make it drift.
+	local lx = target._labelX or target.Label.Position.X.Offset
+	if not (self._introAt and os.clock() - self._introAt < 1.2) then
+		target.Label.Position = UDim2.fromOffset(lx - 4, 0)
+		tween(target.Label, { Position = UDim2.fromOffset(lx, 0) }, 0.35, Motion.Expo, Motion.Out)
+	end
 	-- content: previous page slides away and fades, new one slides in (Fluent-style)
 	local offset = downwards and 18 or -18
 	if previous then
@@ -3825,6 +3878,7 @@ function Window:Hide()
 	if self.Destroyed then return end
 	self.Hidden = true
 	closePopup()
+	if self._setSearch then self._setSearch(false) end
 	self._visToken = (self._visToken or 0) + 1
 	local token = self._visToken
 	self.Veil.Visible = true
@@ -4208,7 +4262,7 @@ function Window:_showKeySystem(settings, onSuccess)
 	Corner(nil, field)
 	local fieldStroke = Stroke(field)
 	local box = New("TextBox", { Text = "", PlaceholderText = "Paste your key", PlaceholderColor3 = "Placeholder", TextSize = 14, Size = UDim2.new(1, -24, 1, 0), Position = UDim2.fromOffset(12, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = field })
-	connect(box.Focused, function() tween(fieldStroke, { Color = themeValue("Accent"), Transparency = 0 }, Motion.fast) end)
+	connect(box.Focused, function() focusRing(fieldStroke, true) end)
 	connect(box.FocusLost, function() tween(fieldStroke, { Color = themeValue("Stroke"), Transparency = CurrentTheme.StrokeTransparency }, Motion.base) end)
 	local status = New("TextLabel", { Text = "", TextSize = 12, TextColor3 = "Error", Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5, Visible = false, Parent = card })
 	local row = New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 6, Parent = card })
