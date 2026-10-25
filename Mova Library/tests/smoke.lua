@@ -488,6 +488,16 @@ test("Label / Paragraph / Divider / Section", function()
 	truthy(not sec.Holder.Visible)
 	mock.click(sec.Header)
 	truthy(sec.Holder.Visible)
+	mock.flush() mock.flush() -- one frame to lay out, then the grow tween settles
+	truthy(sec.Holder.AutomaticSize == Enum.AutomaticSize.Y and not sec.Holder.ClipsDescendants, "open content is auto-sized and unclipped again")
+	truthy(sec.Highlight.Parent == sec.Panel and sec.Highlight.BackgroundTransparency < 1, "accent line along the bottom while open")
+	-- fold / unfold within the same animation must not leave the content stuck
+	sec:SetCollapsed(true) sec:SetCollapsed(false)
+	mock.flush() mock.flush()
+	truthy(sec.Holder.Visible and sec.Holder.AutomaticSize == Enum.AutomaticSize.Y, "quick double toggle settles open")
+	sec:SetCollapsed(true, true)
+	eq(sec.Highlight.BackgroundTransparency, 1, "highlight hidden when folded")
+	sec:SetCollapsed(false, true)
 	-- boxed panel: outline, header, rule, inset content; description + icon optional
 	truthy(sec.Panel == sec.Frame and sec.Stroke.Parent == sec.Panel and sec.Rule.Parent == sec.Panel, "section is a boxed panel")
 	eq(sec.Header.Size.Y.Offset, 44)

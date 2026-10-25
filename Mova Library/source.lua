@@ -3403,6 +3403,12 @@ function Container:CreateSection(props)
 	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -11, 0.5, 0), Visible = collapsible, ZIndex = 3, Parent = header })
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 12, 1.5)
 	local rule = New("Frame", { Name = "Rule", BackgroundColor3 = "Divider", Size = UDim2.new(1, -2 * SECTION_PAD - 6, 0, 1), Position = UDim2.fromOffset(SECTION_PAD + 3, HEADER), Parent = panel })
+	-- accent highlight along the bottom edge while the section is open; fades out as it folds
+	local glow = New("Frame", {
+		Name = "Highlight", BackgroundColor3 = "Accent", BackgroundTransparency = 0.25, Size = UDim2.new(1, -2 * (SECTION_PAD + 6), 0, 2),
+		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -1), ZIndex = 2, Parent = panel,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = glow })
 	local holder = New("Frame", {
 		Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, HEADER + 1),
 		Parent = panel,
@@ -3417,20 +3423,29 @@ function Container:CreateSection(props)
 
 	local section = setmetatable({
 		Type = "Section", Name = name, Frame = panel, Panel = panel, Holder = holder, Header = header, TitleLabel = title, DescLabel = descLabel,
-		Stroke = panelStroke, Rule = rule, Chevron = chevron,
+		Stroke = panelStroke, Rule = rule, Highlight = glow, Chevron = chevron,
 		Window = self.Window, Tab = self.Tab or self, Elements = {}, Collapsed = false, Collapsible = collapsible, _order = 0,
 	}, Section)
 	self.Elements[#self.Elements + 1] = section
 	self.Window._allSections[#self.Window._allSections + 1] = section
 
 	local collapseToken = 0
+	local openHeight = 0 -- last height measured while the content was fully open
+	-- Height of the open content. holder.AbsoluteSize is right whenever the holder is open and
+	-- auto-sized; otherwise fall back to the list's content size plus the padding.
 	local function contentHeight()
-		local h = holder.AbsoluteSize.Y
+		local h = holder.AutomaticSize == Enum.AutomaticSize.Y and holder.Visible and holder.AbsoluteSize.Y or 0
 		if h <= 0 then
 			local ok, inner = pcall(function() return holderLayout.AbsoluteContentSize.Y end)
-			h = (ok and inner or 0) + 2 * SECTION_PAD
+			if ok and inner and inner > 0 then h = inner + 2 * SECTION_PAD end
 		end
+		if h <= 0 then h = openHeight end
 		return h
+	end
+	local function settleOpen()
+		holder.AutomaticSize = Enum.AutomaticSize.Y
+		holder.Size = UDim2.new(1, 0, 0, 0)
+		holder.ClipsDescendants = false
 	end
 	function section:SetCollapsed(state, instant)
 		state = state and true or false
@@ -3438,33 +3453,52 @@ function Container:CreateSection(props)
 		self.Collapsed = state
 		collapseToken = collapseToken + 1
 		local token = collapseToken
-		local height = contentHeight()
-		local t = instant and 0 or Motion.base
-		tween(chevron, { Rotation = state and -90 or 0 }, instant and 0 or 0.3, Motion.Back, Motion.Out)
-		tween(rule, { BackgroundTransparency = state and 1 or 0 }, t)
-		holder.ClipsDescendants = true -- only while the height animates; clipping would eat the card outlines
+		if instant then
+			chevron.Rotation = state and -90 or 0
+			rule.BackgroundTransparency = state and 1 or 0
+			glow.BackgroundTransparency = state and 1 or 0.25
+		else
+			tween(chevron, { Rotation = state and -90 or 0 }, 0.3, Motion.Back, Motion.Out)
+			tween(rule, { BackgroundTransparency = state and 1 or 0 }, Motion.base)
+			tween(glow, { BackgroundTransparency = state and 1 or 0.25 }, state and Motion.fast or Motion.slow)
+		end
 		if state then
+			local height = contentHeight()
+			if height > 0 then openHeight = height end
+			-- freeze the current height, then run it down; clip only while the height animates
+			-- (clipping for good would eat the card outlines at the padding edge)
+			holder.ClipsDescendants = true
 			holder.AutomaticSize = Enum.AutomaticSize.None
-			holder.Size = UDim2.new(1, 0, 0, height)
 			if instant then
 				holder.Size = UDim2.new(1, 0, 0, 0)
 				holder.Visible = false
-				panel.Size = UDim2.new(1, 0, 0, HEADER)
 			else
+				holder.Size = UDim2.new(1, 0, 0, height)
 				tween(holder, { Size = UDim2.new(1, 0, 0, 0) }, 0.3, Motion.Expo, Motion.Out)
 				task.delay(0.3, function() if token == collapseToken and self.Collapsed then holder.Visible = false end end)
 			end
 		else
 			holder.Visible = true
-			if instant or height <= 0 then
-				holder.AutomaticSize = Enum.AutomaticSize.Y
-				holder.ClipsDescendants = false
-			else
-				holder.AutomaticSize = Enum.AutomaticSize.None
-				holder.Size = UDim2.new(1, 0, 0, 0)
-				tween(holder, { Size = UDim2.new(1, 0, 0, height) }, 0.35, Motion.Expo, Motion.Out)
-				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then holder.AutomaticSize = Enum.AutomaticSize.Y holder.ClipsDescendants = false end end)
+			if instant then
+				settleOpen()
+				return self
 			end
+			-- the holder was hidden, so its layout may be stale: show it at zero height (clipped,
+			-- so nothing flashes), let one frame lay the cards out, then measure and grow
+			holder.ClipsDescendants = true
+			holder.AutomaticSize = Enum.AutomaticSize.None
+			local from = holder.Size.Y.Offset
+			if from < 0 then from = 0 end
+			holder.Size = UDim2.new(1, 0, 0, from)
+			task.spawn(function()
+				task.wait()
+				if token ~= collapseToken or self.Collapsed or not holder.Parent then return end
+				local height = contentHeight()
+				if height <= 0 then settleOpen() return end
+				openHeight = height
+				tween(holder, { Size = UDim2.new(1, 0, 0, height) }, 0.35, Motion.Expo, Motion.Out)
+				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then settleOpen() end end)
+			end)
 		end
 		return self
 	end
