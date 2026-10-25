@@ -50,6 +50,7 @@ Every visual decision below was taken after reading the presentation code of the
 | --- | --- |
 | Real font weights (`Regular / Medium / SemiBold / Bold`) through `Font.new(family, weight)` instead of `Enum.Font` pairs; 14 px Medium titles, 12 px dim descriptions | WindUI `Creator.Font` + `FontWeight`, Gen 2 / Aetheris `Font.new(id, weight)` |
 | Cards: surface + 1 px outline at 45 % transparency, hover = white wash (`BackgroundTransparency 0.95`) and the outline sharpens, 0.22 s Quint Out; press = card shrinks 8 px symmetrically and springs back with Exponential Out | Gen 2 `hover()` / `press()` (stroke + overlay tween, width bounce) |
+| Section: a boxed panel — soft surface + hairline outline, 44 px header (icon, title, optional description, chevron that points right while folded), a rule under the header and the cards inset 8 px inside; the header is the button and the content folds with an Exponential height tween | WindUI boxed sections, Obsidian groupboxes, Fluent section headers |
 | Button: the whole card is the control — no arrow or badge on the right; press = outline ghosts for 0.25 s while the card squeezes 8 px and springs back | Gen 2 `button.luau` (stroke ghost + width bounce, no trailing glyph) |
 | Toggle: 44×20 neutral track that never changes colour, 20×14 pill knob (translucent off, accent with a lighter rim on), one 0.6 s Exponential Out slide — no stretch or overshoot | Gen 2 switch geometry (50×21 / 25×17, trimmed), Fluent 36×18 proportions |
 | Slider: Gen 2's wide layout — title over a dim value readout (click it to type), a fixed 200 px track on the right with a gradient fill and a 30×18 pill handle that grows and ghosts while held; narrow cards shrink the track first, then drop it under the title with the readout beside it | Gen 2 `slider.luau` wide / narrow layouts, fill gradient, handle states |
@@ -144,7 +145,7 @@ Every constructor accepts a table; `Name`/`Title`/`Text` is the label, `Descript
 | `CreateLabel{ Name, Icon, Transparent }` or `CreateLabel("text")` | — | | `Set(text)` |
 | `CreateParagraph{ Title, Content }` | — | | `Set{ Title, Content }` |
 | `CreateDivider("text")` | — | | |
-| `CreateSection{ Name, Collapsed }` | — | Returns a container with all constructors | `SetCollapsed(bool)` |
+| `CreateSection{ Name, Description, Icon, Collapsed, Collapsible }` | — | Boxed, foldable panel; returns a container with all constructors | `Collapse()`, `Expand()`, `Toggle()`, `IsCollapsed()`, `SetCollapsed(bool)`, `SetName()`, `SetDescription()` |
 | `CreateGroup{ Direction = "row"\|"column", Columns = 2, Gap = 6 }` | — | Rayfield Gen 2 layout container: a row packs children side by side (wrapping past `Columns`), a column stacks them; nest a row of columns for a grid. Aliases `CreateRow` / `CreateColumn` | `SetVisible(bool)`, `Destroy()` |
 
 **Common handle API** (every element): `.Value`, `.Flag`, `.Type`, `.Card`, `Set(value, silent)`, `Get()`, `SetTitle(text)`, `SetDescription(text)`, `SetVisible(bool)`, `Lock(reason?)`, `Unlock()`, `IsLocked()`, `SetOrder(n)`, `OnChanged(fn)`, `Destroy()`.

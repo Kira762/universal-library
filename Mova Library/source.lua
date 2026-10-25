@@ -3356,87 +3356,140 @@ end
 local Section = setmetatable({}, { __index = Container })
 Section.__index = Section
 
+local SECTION_PAD = 8 -- inset of the cards inside a section panel
+
+-- A section is a boxed panel (WindUI's Box sections / Obsidian groupboxes): a soft surface with a
+-- hairline outline, a 44px header row (icon, title, optional description, chevron) that folds the
+-- content underneath, a divider between the two, and the cards inset 8px inside the panel so they
+-- read as nested. The whole header is the button; the chevron points right while folded.
 function Container:CreateSection(props)
 	if typeof(props) == "string" then props = { Name = props } end
 	props = props or {}
-	local name = prop(props, "Section", "Name", "name", "Title")
+	local name = prop(props, "Section", "Name", "name", "Title", "title")
+	local desc = prop(props, nil, "Description", "description", "Desc")
+	local icon = prop(props, nil, "Icon", "icon")
 	local collapsible = prop(props, true, "Collapsible", "collapsible")
-	local collapsed = prop(props, false, "Collapsed", "collapsed")
+	local collapsed = prop(props, false, "Collapsed", "collapsed", "Opened")
+	if props.Opened ~= nil then collapsed = not props.Opened end
 
-	local frame = New("Frame", {
-		Name = "Section", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = self:_nextOrder(), Parent = self.Holder,
+	local HEADER = desc and 52 or 44
+	local panel = New("Frame", {
+		Name = "Section", BackgroundColor3 = "Surface", BackgroundTransparency = 0.6, Size = UDim2.new(1, 0, 0, HEADER),
+		AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = self:_nextOrder(), Parent = self.Holder,
 	})
-	local header = New("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), Parent = frame })
-	local title = New("TextLabel", {
-		TextSize = 11, TextColor3 = "TextDim", Weight = "SemiBold", Size = UDim2.new(1, -28, 1, 0), Position = UDim2.fromOffset(4, 0),
-		TextXAlignment = Enum.TextXAlignment.Left, Parent = header,
-	})
-	bindText(title, tostring(name):upper())
-	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Visible = collapsible, Parent = header })
-	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 13, 1.5)
-	if collapsible then
-		connect(header.MouseEnter, function() tween(title, { TextColor3 = themeValue("Text") }, Motion.fast) tintGlyph(chevron, themeValue("Text")) end)
-		connect(header.MouseLeave, function() tween(title, { TextColor3 = themeValue("TextDim") }, Motion.slow) tintGlyph(chevron, themeValue("TextDim"), Motion.slow) end)
+	Corner(nil, panel)
+	local panelStroke = Stroke(panel)
+	local header = New("TextButton", { Name = "Header", Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, HEADER), ZIndex = 2, Parent = panel })
+	local wash = hoverOverlay(header)
+	local iconImage = resolveIcon(icon)
+	local textX = 14
+	if iconImage then
+		New("ImageLabel", { Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), ZIndex = 3, Parent = header })
+		textX = 38
 	end
-	local holder = New("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, 28),
-		Parent = frame,
+	local title = New("TextLabel", {
+		TextSize = 13, TextColor3 = "Text", Weight = "SemiBold", Size = UDim2.new(1, -textX - 40, 0, 18), Position = UDim2.new(0, textX, 0.5, desc and -9 or 0),
+		AnchorPoint = Vector2.new(0, 0.5), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3, Parent = header,
 	})
+	bindText(title, tostring(name))
+	local descLabel
+	if desc then
+		descLabel = New("TextLabel", {
+			TextSize = 11, TextColor3 = "TextDim", Size = UDim2.new(1, -textX - 40, 0, 14), Position = UDim2.new(0, textX, 0.5, 9), AnchorPoint = Vector2.new(0, 0.5),
+			TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3, Parent = header,
+		})
+		bindText(descLabel, tostring(desc))
+	end
+	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -11, 0.5, 0), Visible = collapsible, ZIndex = 3, Parent = header })
+	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 12, 1.5)
+	local rule = New("Frame", { Name = "Rule", BackgroundColor3 = "Divider", Size = UDim2.new(1, -2 * SECTION_PAD - 6, 0, 1), Position = UDim2.fromOffset(SECTION_PAD + 3, HEADER), Parent = panel })
+	local holder = New("Frame", {
+		Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, HEADER + 1),
+		Parent = panel,
+	})
+	Padding(holder, SECTION_PAD, SECTION_PAD, SECTION_PAD, SECTION_PAD)
 	local holderLayout = List(holder, 6, nil, Enum.HorizontalAlignment.Center)
+	if collapsible then
+		hoverFx(header, wash, panelStroke, { strength = 0.96 })
+		connect(header.MouseEnter, function() tintGlyph(chevron, themeValue("Text")) end)
+		connect(header.MouseLeave, function() tintGlyph(chevron, themeValue("TextDim"), Motion.slow) end)
+	end
 
 	local section = setmetatable({
-		Type = "Section", Name = name, Frame = frame, Holder = holder, Header = header, TitleLabel = title,
-		Window = self.Window, Tab = self.Tab or self, Elements = {}, Collapsed = false, _order = 0,
+		Type = "Section", Name = name, Frame = panel, Panel = panel, Holder = holder, Header = header, TitleLabel = title, DescLabel = descLabel,
+		Stroke = panelStroke, Rule = rule, Chevron = chevron,
+		Window = self.Window, Tab = self.Tab or self, Elements = {}, Collapsed = false, Collapsible = collapsible, _order = 0,
 	}, Section)
 	self.Elements[#self.Elements + 1] = section
 	self.Window._allSections[#self.Window._allSections + 1] = section
 
 	local collapseToken = 0
+	local function contentHeight()
+		local h = holder.AbsoluteSize.Y
+		if h <= 0 then
+			local ok, inner = pcall(function() return holderLayout.AbsoluteContentSize.Y end)
+			h = (ok and inner or 0) + 2 * SECTION_PAD
+		end
+		return h
+	end
 	function section:SetCollapsed(state, instant)
 		state = state and true or false
 		if state == self.Collapsed then return self end
 		self.Collapsed = state
 		collapseToken = collapseToken + 1
 		local token = collapseToken
-		local ok, contentHeight = pcall(function() return holderLayout.AbsoluteContentSize.Y end)
-		contentHeight = (ok and contentHeight) or holder.AbsoluteSize.Y
-		tween(chevron, { Rotation = state and -90 or 0 }, Motion.base, Motion.Back, Motion.Out)
+		local height = contentHeight()
+		local t = instant and 0 or Motion.base
+		tween(chevron, { Rotation = state and -90 or 0 }, instant and 0 or 0.3, Motion.Back, Motion.Out)
+		tween(rule, { BackgroundTransparency = state and 1 or 0 }, t)
 		holder.ClipsDescendants = true -- only while the height animates; clipping would eat the card outlines
 		if state then
 			holder.AutomaticSize = Enum.AutomaticSize.None
-			holder.Size = UDim2.new(1, 0, 0, contentHeight)
+			holder.Size = UDim2.new(1, 0, 0, height)
 			if instant then
 				holder.Size = UDim2.new(1, 0, 0, 0)
 				holder.Visible = false
+				panel.Size = UDim2.new(1, 0, 0, HEADER)
 			else
 				tween(holder, { Size = UDim2.new(1, 0, 0, 0) }, 0.3, Motion.Expo, Motion.Out)
 				task.delay(0.3, function() if token == collapseToken and self.Collapsed then holder.Visible = false end end)
 			end
 		else
 			holder.Visible = true
-			if instant or contentHeight <= 0 then
+			if instant or height <= 0 then
 				holder.AutomaticSize = Enum.AutomaticSize.Y
+				holder.ClipsDescendants = false
 			else
 				holder.AutomaticSize = Enum.AutomaticSize.None
 				holder.Size = UDim2.new(1, 0, 0, 0)
-				tween(holder, { Size = UDim2.new(1, 0, 0, contentHeight) }, 0.35, Motion.Expo, Motion.Out)
+				tween(holder, { Size = UDim2.new(1, 0, 0, height) }, 0.35, Motion.Expo, Motion.Out)
 				task.delay(0.35, function() if token == collapseToken and not self.Collapsed then holder.AutomaticSize = Enum.AutomaticSize.Y holder.ClipsDescendants = false end end)
 			end
-			if instant or contentHeight <= 0 then holder.ClipsDescendants = false end
 		end
 		return self
 	end
-	function section:Set(newName) self.Name = newName bindText(title, tostring(newName):upper()) return self end
+	function section:Collapse(instant) return self:SetCollapsed(true, instant) end
+	function section:Expand(instant) return self:SetCollapsed(false, instant) end
+	function section:Toggle() return self:SetCollapsed(not self.Collapsed) end
+	function section:IsCollapsed() return self.Collapsed end
+	function section:Set(newName) self.Name = newName bindText(title, tostring(newName)) return self end
 	section.SetTitle = section.Set
 	section.SetName = section.Set
-	function section:SetVisible(state) frame.Visible = state and true or false return self end
+	function section:SetDescription(text)
+		if not descLabel then return self end
+		bindText(descLabel, tostring(text or ""))
+		return self
+	end
+	function section:SetVisible(state) panel.Visible = state and true or false return self end
 	function section:Destroy()
 		for i = #self.Elements, 1, -1 do pcall(function() self.Elements[i]:Destroy() end) end
-		frame:Destroy()
+		panel:Destroy()
 	end
 	if collapsible then
-		connect(header.MouseButton1Click, function() section:SetCollapsed(not section.Collapsed) end)
+		connect(header.MouseButton1Click, function()
+			flash(wash)
+			section:SetCollapsed(not section.Collapsed)
+		end)
 	end
 	if collapsed then section:SetCollapsed(true, true) end
 	return section

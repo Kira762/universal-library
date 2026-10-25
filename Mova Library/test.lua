@@ -158,13 +158,16 @@ end
 do
 	local T = Tabs.Layout
 
-	local section = T:CreateSection({ Name = "Section — click the header to collapse" })
+	local section = T:CreateSection({ Name = "Section", Description = "Click the header to fold it", Icon = "swords" })
 	section:CreateToggle({ Name = "Toggle", Flag = "SectionToggle" })
 	section:CreateSlider({ Name = "Slider", Flag = "SectionSlider", Range = { 0, 10 }, Default = 3 })
 	section:CreateLabel({ Name = "Any element fits in a section" })
 
 	local collapsed = T:CreateSection({ Name = "Starts collapsed", Collapsed = true })
 	collapsed:CreateLabel({ Name = "Found it" })
+
+	local fixed = T:CreateSection({ Name = "Not collapsible", Collapsible = false })
+	fixed:CreateLabel({ Name = "Plain group" })
 
 	T:CreateDivider("Row — two columns, wraps")
 	local row = T:CreateRow({ Columns = 2 })
