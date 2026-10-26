@@ -26,7 +26,7 @@
 ]]
 
 local Mova = {
-	Version = "1.1.0",
+	Version = "1.2.0",
 	Build = "mova-1",
 	Flags = {},      -- flag -> current value
 	Options = {},    -- flag -> element handle
@@ -680,20 +680,20 @@ Mova.Themes.Mono = derive(Mova.Themes.Dark, {
 	HighlightEnd = C(150, 150, 160),
 	Background = C(20, 20, 23),
 	Sidebar = C(14, 14, 16),
-	Surface = C(31, 31, 35),
-	SurfaceHover = C(41, 41, 46),
+	Surface = C(38, 38, 44),
+	SurfaceHover = C(48, 48, 55),
 	Stroke = C(255, 255, 255),
-	StrokeTransparency = 0.9,
-	Divider = C(37, 37, 41),
+	StrokeTransparency = 0.86,
+	Divider = C(46, 46, 52),
 	Accent = C(228, 228, 232),
 	AccentHover = C(255, 255, 255),
 	OnAccent = C(18, 18, 20),
-	Text = C(238, 238, 240),
-	TextDim = C(142, 142, 150),
-	Placeholder = C(142, 142, 150),
+	Text = C(240, 240, 243),
+	TextDim = C(158, 158, 168),
+	Placeholder = C(158, 158, 168),
 	Knob = C(236, 236, 240),
-	Track = C(48, 48, 54),
-	Field = C(38, 38, 43),
+	Track = C(60, 60, 68),
+	Field = C(50, 50, 57),
 	Scrollbar = C(84, 84, 92),
 	Success = C(128, 204, 164),
 	Warning = C(232, 190, 110),
@@ -2115,6 +2115,10 @@ function Element:_fireChanged()
 end
 
 -- Builds the standard card (title + description on the left, control on the right).
+-- Card metrics. Roomier than Gen 2's 43px rows: 50px minimum, 16px side / 15px vertical padding,
+-- 15px titles over 13px descriptions, 32px fields. Everything below reads from these.
+local CARD_MIN, CARD_PAD_X, CARD_PAD_Y, FIELD_H = 50, 16, 15, 32
+
 local function buildCard(container, props, kind, controlWidth, noStack, minControlWidth)
 	local name = prop(props, kind, "Name", "name", "Title", "title", "Text")
 	local desc = prop(props, nil, "Description", "description", "Desc", "Info")
@@ -2123,7 +2127,7 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 	local card = New("Frame", {
 		Name = kind,
 		BackgroundColor3 = WHITE, -- tinted by SurfaceGradient below
-		Size = UDim2.new(1, 0, 0, 44),
+		Size = UDim2.new(1, 0, 0, CARD_MIN),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = container:_nextOrder(),
 		Parent = container.Holder,
@@ -2132,35 +2136,35 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 	SurfaceGradient(card, "Surface", 0.03)
 	local stroke = Stroke(card)
 	local overlay = hoverOverlay(card)
-	local sizeConstraint = New("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
+	local sizeConstraint = New("UISizeConstraint", { MinSize = Vector2.new(0, CARD_MIN), Parent = card })
 
 	local iconImage = resolveIcon(icon)
-	local leftPad = 14
+	local leftPad = CARD_PAD_X
 	if iconImage then
 		New("ImageLabel", {
-			Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(18, 18), Position = UDim2.fromOffset(14, 13), Parent = card,
+			Image = iconImage, ImageColor3 = "TextDim", Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(CARD_PAD_X, CARD_PAD_Y), Parent = card,
 		})
-		leftPad = 40
+		leftPad = CARD_PAD_X + 20 + 10
 	end
 
 	local textHolder = New("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(leftPad, 0),
-		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - 14 - ((controlWidth or 0) > 0 and 8 or 0), 0, 0),
+		Size = UDim2.new(1, -leftPad - (controlWidth or 0) - CARD_PAD_X - ((controlWidth or 0) > 0 and 10 or 0), 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = card,
 	})
-	local textPad = Padding(textHolder, 13, 0, 13, 0)
+	local textPad = Padding(textHolder, CARD_PAD_Y, 0, CARD_PAD_Y, 0)
 	List(textHolder, 3)
 
 	local title = New("TextLabel", {
-		TextSize = 14, Weight = "Medium", TextColor3 = "Text", Size = UDim2.new(1, 0, 0, 18),
+		TextSize = 15, Weight = "Medium", TextColor3 = "Text", Size = UDim2.new(1, 0, 0, 20),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1, Parent = textHolder,
 	})
 	bindText(title, tostring(name))
 
 	local descLabel = New("TextLabel", {
-		TextSize = 12, Weight = "Regular", TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
+		TextSize = 13, Weight = "Regular", TextColor3 = "TextDim", TextWrapped = true, LineHeight = 1.15,
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 		LayoutOrder = 2, Visible = false, Parent = textHolder,
@@ -2173,7 +2177,7 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 	local control = New("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 0),
+		Position = UDim2.new(1, -CARD_PAD_X, 0, 0),
 		Size = UDim2.new(0, controlWidth or 0, 1, 0),
 		ZIndex = 2,
 		Parent = card,
@@ -2226,7 +2230,7 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 			local win = element.Window
 			local scale = win and win.MainScale and win.MainScale.Scale or 1
 			if scale > 0 then w = w / scale end
-			local room = w - leftPad - 14 - 8 - cw
+			local room = w - leftPad - CARD_PAD_X - 10 - cw
 			local bounds = title.TextBounds
 			local need = clamp((bounds and bounds.X or 60) + 10, 56, 110)
 			local want = room < need
@@ -2234,7 +2238,7 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 			-- so the cards of a two-column group keep one height for as long as possible
 			local shrunk = nil
 			if want and element.MinControlWidth then
-				local avail = math.floor(w - leftPad - 14 - 8 - need)
+				local avail = math.floor(w - leftPad - CARD_PAD_X - 10 - need)
 				if avail >= element.MinControlWidth then
 					want = false
 					shrunk = math.min(avail, cw)
@@ -2244,17 +2248,17 @@ local function buildCard(container, props, kind, controlWidth, noStack, minContr
 			element.Stacked, element._shrunk = want, shrunk
 			if element._onStack then element._onStack(want) end
 			if want then
-				textHolder.Size = UDim2.new(1, -leftPad - 14, 0, 0)
-				textPad.PaddingBottom = UDim.new(0, 13 + 28 + 10)
+				textHolder.Size = UDim2.new(1, -leftPad - CARD_PAD_X, 0, 0)
+				textPad.PaddingBottom = UDim.new(0, CARD_PAD_Y + FIELD_H + 10)
 				control.AnchorPoint = Vector2.new(1, 1)
-				control.Position = UDim2.new(1, -14, 1, -12)
-				control.Size = UDim2.new(1, -leftPad - 14, 0, 28)
+				control.Position = UDim2.new(1, -CARD_PAD_X, 1, -(CARD_PAD_Y - 1))
+				control.Size = UDim2.new(1, -leftPad - CARD_PAD_X, 0, FIELD_H)
 			else
 				local width = shrunk or cw
-				textHolder.Size = shrunk and UDim2.new(1, -leftPad - width - 14 - 8, 0, 0) or restingText
-				textPad.PaddingBottom = UDim.new(0, 13)
+				textHolder.Size = shrunk and UDim2.new(1, -leftPad - width - CARD_PAD_X - 10, 0, 0) or restingText
+				textPad.PaddingBottom = UDim.new(0, CARD_PAD_Y)
 				control.AnchorPoint = Vector2.new(1, 0)
-				control.Position = UDim2.new(1, -14, 0, 0)
+				control.Position = UDim2.new(1, -CARD_PAD_X, 0, 0)
 				control.Size = UDim2.new(0, width, 1, 0)
 			end
 		end
@@ -2319,7 +2323,7 @@ end
 
 -- Toggle --------------------------------------------------------------------------------------
 
-local TOGGLE_W, TOGGLE_H, KNOB_W, KNOB_H, KNOB_INSET = 44, 20, 20, 14, 3
+local TOGGLE_W, TOGGLE_H, KNOB_W, KNOB_H, KNOB_INSET = 48, 22, 22, 16, 3
 
 function Container:CreateToggle(props)
 	props = props or {}
@@ -2428,7 +2432,7 @@ function Container:CreateSlider(props)
 	-- Gen 2's wide slider: title stacked over a dim value readout on the left, a fixed-width track
 	-- on the right, all on one 58px card. On a narrow card (phone, grouped column) buildCard drops
 	-- the track under the text and the readout jumps up beside the title so the card stays short.
-	local trackWidth = IsMobile and 150 or 200
+	local trackWidth = IsMobile and 160 or 220
 	local el = buildCard(self, props, "Slider", trackWidth, false, 110)
 	el.Min, el.Max, el.Increment, el.Decimals = min, max, increment, decimals
 	el.Suffix, el.Prefix = suffix, prefix
@@ -2443,7 +2447,7 @@ function Container:CreateSlider(props)
 	-- pulled 6px left inside it: its text lines up with the title, its field padding does not)
 	local valueHost = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 3, Parent = textHolder })
 	local valueBox = New("TextBox", {
-		Text = "", TextSize = 12, TextColor3 = "TextDim", Weight = "SemiBold",
+		Text = "", TextSize = 13, TextColor3 = "TextDim", Weight = "SemiBold",
 		BackgroundColor3 = "Field", BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.fromOffset(-6, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ZIndex = 3, Parent = valueHost,
@@ -2483,7 +2487,7 @@ function Container:CreateSlider(props)
 	-- edge (it lives inside the fill, so the fill carries it). While held the pill grows a touch,
 	-- ghosts to 70% and shows a thin ring. Sized a step under Gen 2's 35x20 so it reads as a
 	-- handle on a 14px track rather than a block.
-	local HANDLE_REST, HANDLE_HELD = Vector2.new(30, 18), Vector2.new(34, 20)
+	local HANDLE_REST, HANDLE_HELD = Vector2.new(32, 20), Vector2.new(36, 22)
 	-- the pill is centred on the track's ends, so the track is inset by half a pill: at 0% / 100%
 	-- the pill stays inside the control instead of hanging over the card edge
 	local trackHolder = New("Frame", {
@@ -2491,7 +2495,7 @@ function Container:CreateSlider(props)
 		Position = UDim2.new(0, 0, 0.5, 0), ZIndex = 2, Parent = el.Control,
 	})
 	local track = New("Frame", {
-		BackgroundColor3 = "Track", Size = UDim2.new(1, -HANDLE_HELD.X, 0, 14), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = trackHolder,
+		BackgroundColor3 = "Track", Size = UDim2.new(1, -HANDLE_HELD.X, 0, 16), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = trackHolder,
 	})
 	Corner(7, track)
 	local fill = New("Frame", { BackgroundColor3 = WHITE, Size = UDim2.new(0, 0, 1, 0), ZIndex = 2, Parent = track }) -- colour comes from the gradient
@@ -2606,7 +2610,7 @@ end
 
 function Container:CreateInput(props)
 	props = props or {}
-	local el = buildCard(self, props, "Input", IsMobile and 120 or 160, false, 90)
+	local el = buildCard(self, props, "Input", IsMobile and 130 or 180, false, 96)
 	el.Value = tostring(prop(props, "", "CurrentValue", "Default", "Value", "default", "value", "Text") or "")
 	local placeholder = prop(props, "Type here...", "PlaceholderText", "Placeholder", "placeholder")
 	local numeric = prop(props, false, "Numeric", "numeric", "NumbersOnly")
@@ -2615,13 +2619,13 @@ function Container:CreateInput(props)
 	local maxLength = prop(props, nil, "MaxLength", "maxLength")
 
 	local field = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
+		BackgroundColor3 = "Field", Size = UDim2.new(1, 0, 0, FIELD_H), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
 	local stroke = Stroke(field)
 	local box = New("TextBox", {
-		Text = el.Value, PlaceholderText = placeholder, PlaceholderColor3 = "Placeholder", TextSize = 13,
-		Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), ClipsDescendants = true,
+		Text = el.Value, PlaceholderText = placeholder, PlaceholderColor3 = "Placeholder", TextSize = 14,
+		Size = UDim2.new(1, -24, 1, 0), Position = UDim2.fromOffset(12, 0), ClipsDescendants = true,
 		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, Parent = field,
 	})
 
@@ -2671,7 +2675,7 @@ end
 
 function Container:CreateDropdown(props)
 	props = props or {}
-	local el = buildCard(self, props, "Dropdown", IsMobile and 136 or 180, false, 100)
+	local el = buildCard(self, props, "Dropdown", IsMobile and 146 or 200, false, 110)
 	el.Options = {}
 	local raw = prop(props, {}, "Options", "options", "Values", "values", "List")
 	for i, v in ipairs(raw) do el.Options[i] = v end
@@ -2695,7 +2699,7 @@ function Container:CreateDropdown(props)
 	end
 
 	local field = New("TextButton", {
-		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 28),
+		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, FIELD_H),
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
@@ -2703,10 +2707,10 @@ function Container:CreateDropdown(props)
 	local fieldHover = hoverOverlay(field)
 	hoverFx(field, fieldHover, nil, { strength = 0.96, enabled = function() return not el.Locked end })
 	local valueLabel = New("TextLabel", {
-		Text = "", TextSize = 13, TextColor3 = "Text", Size = UDim2.new(1, -34, 1, 0), Position = UDim2.fromOffset(10, 0),
+		Text = "", TextSize = 14, TextColor3 = "Text", Size = UDim2.new(1, -38, 1, 0), Position = UDim2.fromOffset(12, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = field,
 	})
-	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 28), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -4, 0, 0), Parent = field })
+	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(22, FIELD_H), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Parent = field })
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 14, 1.6)
 
 	local function display()
@@ -2932,7 +2936,7 @@ function Container:_createKeybind(props, attachedToggle)
 	-- Gen 2 style key box: sized to its label, "Recording" while it listens, Esc cancels,
 	-- Backspace clears, a click anywhere else cancels.
 	local field = New("TextButton", {
-		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.fromOffset(56, 28),
+		Text = "", BackgroundColor3 = "Field", BackgroundTransparency = 0, Size = UDim2.fromOffset(60, FIELD_H),
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, field)
@@ -2940,7 +2944,7 @@ function Container:_createKeybind(props, attachedToggle)
 	local fieldHover = hoverOverlay(field)
 	hoverFx(field, fieldHover, nil, { strength = 0.96, enabled = function() return not el.Locked end })
 	local label = New("TextLabel", {
-		Text = keyToString(el.Value), TextSize = 12, Weight = "SemiBold", TextColor3 = "Text", Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
+		Text = keyToString(el.Value), TextSize = 13, Weight = "SemiBold", TextColor3 = "Text", Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = field,
 	})
 
@@ -2948,9 +2952,9 @@ function Container:_createKeybind(props, attachedToggle)
 	local function sizeBox(animate)
 		local w = clamp(#label.Text * 7 + 24, 44, 110)
 		if animate then
-			tween(field, { Size = UDim2.fromOffset(w, 28) }, 0.3, Motion.Expo, Motion.Out)
+			tween(field, { Size = UDim2.fromOffset(w, FIELD_H) }, 0.3, Motion.Expo, Motion.Out)
 		else
-			field.Size = UDim2.fromOffset(w, 28)
+			field.Size = UDim2.fromOffset(w, FIELD_H)
 		end
 	end
 	local function render(animate)
@@ -3103,14 +3107,14 @@ end
 
 function Container:CreateColorPicker(props)
 	props = props or {}
-	local el = buildCard(self, props, "ColorPicker", 60)
+	local el = buildCard(self, props, "ColorPicker", 64)
 	el.Value = prop(props, Color3.fromRGB(255, 255, 255), "Color", "Default", "Value", "color", "default", "value")
 	el.Alpha = prop(props, nil, "Transparency", "Alpha", "alpha")
 	local useAlpha = el.Alpha ~= nil
 	if useAlpha then el.Alpha = clamp(el.Alpha, 0, 1) end
 
 	local swatchHolder = New("Frame", {
-		BackgroundColor3 = "Field", Size = UDim2.fromOffset(52, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
+		BackgroundColor3 = "Field", Size = UDim2.fromOffset(56, FIELD_H), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Parent = el.Control,
 	})
 	Corner(8, swatchHolder)
 	local swatchStroke = Stroke(swatchHolder)
@@ -3465,7 +3469,7 @@ function Container:CreateSection(props)
 		Parent = panel,
 	})
 	Padding(holder, SECTION_PAD, SECTION_PAD, SECTION_PAD, SECTION_PAD)
-	local holderLayout = List(holder, 6, nil, Enum.HorizontalAlignment.Center)
+	local holderLayout = List(holder, 8, nil, Enum.HorizontalAlignment.Center)
 	if collapsible then
 		hoverFx(header, wash, panelStroke, { strength = 0.96 })
 		connect(header.MouseEnter, function() tintGlyph(chevron, themeValue("Text")) end)
@@ -4459,7 +4463,7 @@ function Window:CreateTab(props, icon)
 
 	local page = New("ScrollingFrame", { Name = "Page", Size = UDim2.fromScale(1, 1), Visible = false, Parent = self.Content })
 	Padding(page, 14, 14, 14 + BOTTOM_FADE_PAD, 14) -- extra room at the end so the last row clears the bottom fade
-	List(page, 6, nil, Enum.HorizontalAlignment.Center)
+	List(page, 8, nil, Enum.HorizontalAlignment.Center)
 
 	tab.Button, tab.Label, tab.Stroke, tab.Hover, tab.Page, tab.Holder, tab.Icon = button, label, buttonStroke, hover, page, page, button:FindFirstChild("Icon")
 	tab._labelX = labelX
