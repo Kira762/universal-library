@@ -385,7 +385,41 @@ def paint(img, box, clip=None):
         if bt < 1 and box.w > 0 and box.h > 0:
             bg = col(p.get("BackgroundColor3"))
             g = mods["gradient"]
-            if g:
+            drawn = False
+            if g and float(g.get("Rotation", 0) or 0) == 0 and box.w >= 8 and (
+                isinstance(g.get("Color"), tuple) or isinstance(g.get("Transparency"), tuple)
+            ):
+                # real horizontal gradient: sample colour + transparency per column
+                def sample(seq, t, default):
+                    if not (isinstance(seq, tuple) and seq[0] == "Seq"):
+                        return default
+                    conv = lambda v: v if isinstance(v, (int, float)) else col(v)
+                    kps = [(kt, conv(kv)) for kt, kv in seq[1]]
+                    if t <= kps[0][0]:
+                        return kps[0][1]
+                    for (ta, va), (tb, vb) in zip(kps, kps[1:]):
+                        if ta <= t <= tb:
+                            f = 0 if tb == ta else (t - ta) / (tb - ta)
+                            if isinstance(va, (int, float)):
+                                return va + (vb - va) * f
+                            return blend(va, vb, f)
+                    return kps[-1][1]
+                strip = Image.new("RGBA", (max(1, int(x1 - x0)), max(1, int(y1 - y0))), (0, 0, 0, 0))
+                sd = ImageDraw.Draw(strip)
+                for cx in range(strip.width):
+                    t = cx / max(1, strip.width - 1)
+                    c = sample(g.get("Color"), t, None)
+                    cc = tuple(int(bg[i] * (c[i] if c is not None else 255) / 255) for i in range(3))
+                    tv = sample(g.get("Transparency"), t, 0.0)
+                    a = int(round((1 - bt) * (1 - float(tv)) * 255))
+                    sd.line([cx, 0, cx, strip.height], fill=cc + (max(0, min(255, a)),))
+                if radius > 0:
+                    mask = Image.new("L", strip.size, 0)
+                    ImageDraw.Draw(mask).rounded_rectangle([0, 0, strip.width - 1, strip.height - 1], radius=radius, fill=255)
+                    strip.putalpha(Image.composite(strip.split()[3], Image.new("L", strip.size, 0), mask))
+                layer.alpha_composite(strip, (int(x0), int(y0)))
+                drawn = True
+            elif g:
                 seq = g.get("Color")
                 if isinstance(seq, tuple) and seq[0] == "Seq":
                     c0, c1 = col(seq[1][0][1]), col(seq[1][-1][1])
@@ -394,8 +428,9 @@ def paint(img, box, clip=None):
                 if isinstance(tr, tuple) and tr[0] == "Seq":
                     avg = sum(v for _, v in tr[1]) / len(tr[1])
                     bt = 1 - (1 - bt) * (1 - avg)
-            alpha = int(round((1 - bt) * 255))
-            ld.rounded_rectangle([x0, y0, x1 - 1, y1 - 1], radius=radius, fill=bg + (alpha,))
+            if not drawn:
+                alpha = int(round((1 - bt) * 255))
+                ld.rounded_rectangle([x0, y0, x1 - 1, y1 - 1], radius=radius, fill=bg + (alpha,))
         st = mods["stroke"]
         if st and float(st.get("Transparency", 0) or 0) < 1 and box.w > 0 and box.h > 0:
             sc = col(st.get("Color"), (0, 0, 0))

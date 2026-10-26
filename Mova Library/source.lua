@@ -636,6 +636,8 @@ Mova.Themes.Dark = {
 	Accent = C(99, 125, 255),
 	AccentHover = C(122, 144, 255),
 	OnAccent = C(255, 255, 255),
+	Highlight = C(99, 125, 255),            -- section header line, left end
+	HighlightEnd = C(168, 120, 255),        -- ... fading into this towards the right
 	Text = C(240, 240, 245),
 	TextDim = C(160, 162, 176),
 	Placeholder = C(160, 162, 176),
@@ -662,6 +664,11 @@ local function derive(base, overrides)
 	for k, v in pairs(overrides) do t[k] = v end
 	-- placeholder text must stay readable on that theme's fields: follow TextDim unless set explicitly
 	if overrides.TextDim and not overrides.Placeholder then t.Placeholder = overrides.TextDim end
+	-- a theme that recolours the accent but says nothing about the section highlight follows it
+	if overrides.Accent and not overrides.Highlight then
+		t.Highlight = overrides.Accent
+		t.HighlightEnd = overrides.HighlightEnd or overrides.AccentHover or overrides.Accent
+	end
 	return t
 end
 
@@ -669,6 +676,8 @@ end
 -- hairline white outlines at ~10% so every edge is drawn but nothing shouts.
 Mova.Themes.Mono = derive(Mova.Themes.Dark, {
 	Name = "Mono",
+	Highlight = C(255, 255, 255),
+	HighlightEnd = C(150, 150, 160),
 	Background = C(20, 20, 23),
 	Sidebar = C(14, 14, 16),
 	Surface = C(31, 31, 35),
@@ -695,6 +704,8 @@ Mova.Themes.Mono = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Light = derive(Mova.Themes.Dark, {
 	Name = "Light",
+	Highlight = C(70, 100, 240),
+	HighlightEnd = C(150, 110, 255),
 	Background = C(244, 244, 247),
 	Sidebar = C(236, 236, 241),
 	Surface = C(255, 255, 255),
@@ -716,6 +727,8 @@ Mova.Themes.Light = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Midnight = derive(Mova.Themes.Dark, {
 	Name = "Midnight",
+	Highlight = C(84, 160, 255),
+	HighlightEnd = C(150, 205, 255),
 	Background = C(19, 23, 35),
 	Sidebar = C(14, 17, 27),
 	Surface = C(35, 42, 62),
@@ -730,6 +743,8 @@ Mova.Themes.Midnight = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Ocean = derive(Mova.Themes.Dark, {
 	Name = "Ocean",
+	Highlight = C(0, 190, 170),
+	HighlightEnd = C(90, 220, 120),
 	Background = C(19, 36, 43),
 	Sidebar = C(14, 28, 34),
 	Surface = C(33, 60, 70),
@@ -746,6 +761,8 @@ Mova.Themes.Ocean = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Ember = derive(Mova.Themes.Dark, {
 	Name = "Ember",
+	Highlight = C(255, 112, 67),
+	HighlightEnd = C(255, 190, 80),
 	Background = C(34, 24, 22),
 	Sidebar = C(27, 19, 17),
 	Surface = C(55, 40, 36),
@@ -760,6 +777,8 @@ Mova.Themes.Ember = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Amethyst = derive(Mova.Themes.Dark, {
 	Name = "Amethyst",
+	Highlight = C(170, 110, 255),
+	HighlightEnd = C(255, 110, 200),
 	Background = C(28, 22, 40),
 	Sidebar = C(22, 17, 31),
 	Surface = C(47, 38, 66),
@@ -774,6 +793,8 @@ Mova.Themes.Amethyst = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Rose = derive(Mova.Themes.Dark, {
 	Name = "Rose",
+	Highlight = C(255, 92, 140),
+	HighlightEnd = C(255, 165, 100),
 	Background = C(36, 23, 29),
 	Sidebar = C(29, 18, 23),
 	Surface = C(58, 39, 48),
@@ -788,6 +809,8 @@ Mova.Themes.Rose = derive(Mova.Themes.Dark, {
 
 Mova.Themes.Mocha = derive(Mova.Themes.Dark, {
 	Name = "Mocha",
+	Highlight = C(203, 166, 247),
+	HighlightEnd = C(245, 194, 231),
 	Background = C(36, 36, 55),
 	Sidebar = C(30, 30, 46),
 	Surface = C(57, 58, 82),
@@ -3402,18 +3425,41 @@ function Container:CreateSection(props)
 	end
 	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -11, 0.5, 0), Visible = collapsible, ZIndex = 3, Parent = header })
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 12, 1.5)
-	-- highlight line directly under the header while the section is open: a 2px accent line that
-	-- starts bright at the left edge and fades out across the panel (the usual "active group" cue)
+	-- Highlight under the header while the section is open: a 2px line that runs from the left edge
+	-- in the theme's Highlight colour, shifts towards HighlightEnd and fades out across the panel,
+	-- with a soft glow bleeding a few pixels down into the content. Both frames are white so the
+	-- gradients own the colour; onTheme rebuilds them when the theme changes.
+	local function fade(a, b, c)
+		return NumberSequence.new({
+			NumberSequenceKeypoint.new(0, a), NumberSequenceKeypoint.new(0.5, b), NumberSequenceKeypoint.new(0.85, c), NumberSequenceKeypoint.new(1, 1),
+		})
+	end
 	local rule = New("Frame", {
-		Name = "Highlight", BackgroundColor3 = "Accent", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromOffset(0, HEADER),
+		Name = "Highlight", BackgroundColor3 = WHITE, BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromOffset(0, HEADER),
 		BorderSizePixel = 0, ZIndex = 2, Parent = panel,
 	})
-	New("UIGradient", {
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.45, 0.45), NumberSequenceKeypoint.new(0.85, 1), NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = rule,
+	local ruleGrad = New("UIGradient", { Transparency = fade(0, 0.3, 1), Parent = rule })
+	-- two stacked glow strips (denser near the line, fainter below) approximate a vertical fall-off,
+	-- since one UIGradient can only fade along one axis and the horizontal fade matters more
+	local GLOW_T, GLOW2_T = 0.86, 0.94
+	local glow = New("Frame", {
+		Name = "HighlightGlow", BackgroundColor3 = WHITE, BackgroundTransparency = GLOW_T, Size = UDim2.new(1, 0, 0, 4), Position = UDim2.fromOffset(0, HEADER + 2),
+		BorderSizePixel = 0, ZIndex = 1, Parent = panel,
 	})
+	local glowGrad = New("UIGradient", { Transparency = fade(0, 0.55, 1), Parent = glow })
+	local glow2 = New("Frame", {
+		Name = "HighlightGlow2", BackgroundColor3 = WHITE, BackgroundTransparency = GLOW2_T, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, HEADER + 6),
+		BorderSizePixel = 0, ZIndex = 1, Parent = panel,
+	})
+	local glow2Grad = New("UIGradient", { Transparency = fade(0, 0.6, 1), Parent = glow2 })
+	onTheme(rule, function()
+		local c1 = themeValue("Highlight") or themeValue("Accent")
+		local c2 = themeValue("HighlightEnd") or themeValue("AccentHover") or c1
+		local seq = ColorSequence.new(c1, c2)
+		ruleGrad.Color = seq
+		glowGrad.Color = seq
+		glow2Grad.Color = seq
+	end)
 	local holder = New("Frame", {
 		Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, HEADER + 1),
 		Parent = panel,
@@ -3428,7 +3474,7 @@ function Container:CreateSection(props)
 
 	local section = setmetatable({
 		Type = "Section", Name = name, Frame = panel, Panel = panel, Holder = holder, Header = header, TitleLabel = title, DescLabel = descLabel,
-		Stroke = panelStroke, Rule = rule, Highlight = rule, Chevron = chevron,
+		Stroke = panelStroke, Rule = rule, Highlight = rule, HighlightGlow = glow, Chevron = chevron,
 		Window = self.Window, Tab = self.Tab or self, Elements = {}, Collapsed = false, Collapsible = collapsible, _order = 0,
 	}, Section)
 	self.Elements[#self.Elements + 1] = section
@@ -3461,9 +3507,13 @@ function Container:CreateSection(props)
 		if instant then
 			chevron.Rotation = state and -90 or 0
 			rule.BackgroundTransparency = state and 1 or 0
+			glow.BackgroundTransparency = state and 1 or GLOW_T
+			glow2.BackgroundTransparency = state and 1 or GLOW2_T
 		else
 			tween(chevron, { Rotation = state and -90 or 0 }, 0.3, Motion.Back, Motion.Out)
 			tween(rule, { BackgroundTransparency = state and 1 or 0 }, state and Motion.fast or Motion.slow)
+			tween(glow, { BackgroundTransparency = state and 1 or GLOW_T }, state and Motion.fast or Motion.slow)
+			tween(glow2, { BackgroundTransparency = state and 1 or GLOW2_T }, state and Motion.fast or Motion.slow)
 		end
 		if state then
 			local height = contentHeight()
@@ -3520,6 +3570,7 @@ function Container:CreateSection(props)
 	function section:SetVisible(state) panel.Visible = state and true or false return self end
 	function section:Destroy()
 		for i = #self.Elements, 1, -1 do pcall(function() self.Elements[i]:Destroy() end) end
+		ThemeHooks[rule] = nil
 		panel:Destroy()
 	end
 	if collapsible then

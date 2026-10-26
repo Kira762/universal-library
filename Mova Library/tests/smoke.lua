@@ -491,6 +491,14 @@ test("Label / Paragraph / Divider / Section", function()
 	mock.flush() mock.flush() -- one frame to lay out, then the grow tween settles
 	truthy(sec.Holder.AutomaticSize == Enum.AutomaticSize.Y and not sec.Holder.ClipsDescendants, "open content is auto-sized and unclipped again")
 	truthy(sec.Highlight.Parent == sec.Panel and sec.Highlight.Position.Y.Offset == 44 and sec.Highlight.BackgroundTransparency < 1, "accent line under the header while open")
+	local grad = mock.find(sec.Highlight, function(x) return x.ClassName == "UIGradient" end)
+	local function stop(i) local k = grad.Color.Keypoints[i] return k.Value or k end -- the mock stores bare colours
+	truthy(grad and grad.Color and stop(1) == Mova:GetTheme().Highlight, "highlight starts in the theme's Highlight colour")
+	Mova:SetTheme("Ember", false) mock.flush()
+	truthy(stop(1) == Mova.Themes.Ember.Highlight and stop(2) == Mova.Themes.Ember.HighlightEnd, "highlight follows the theme")
+	Mova:RegisterTheme("Teal Only", { Accent = Color3.fromRGB(0, 200, 180), AccentHover = Color3.fromRGB(40, 220, 200) })
+	truthy(Mova.Themes["Teal Only"].Highlight == Color3.fromRGB(0, 200, 180) and Mova.Themes["Teal Only"].HighlightEnd == Color3.fromRGB(40, 220, 200), "custom accent-only themes get a matching highlight")
+	Mova:SetTheme("Mono", false) mock.flush()
 	-- fold / unfold within the same animation must not leave the content stuck
 	sec:SetCollapsed(true) sec:SetCollapsed(false)
 	mock.flush() mock.flush()
