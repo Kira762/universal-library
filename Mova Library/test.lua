@@ -341,7 +341,11 @@ do
 	T:CreateDivider("Profile — bottom of the sidebar")
 	local profileRow = T:CreateRow({ Columns = 2 })
 	profileRow:CreateButton({ Name = "Subtitle: Premium", Callback = function() Window:SetProfile({ Subtitle = "Premium" }) log("profile subtitle set") end })
-	profileRow:CreateButton({ Name = "Subtitle: none", Callback = function() Window:SetProfile({ Subtitle = false }) log("profile subtitle cleared") end })
+	profileRow:CreateButton({ Name = "Subtitle: @username / none", Callback = function()
+		local on = Window.ChipSub.Visible
+		Window:SetProfile({ Subtitle = not on })
+		log("profile subtitle", on and "cleared" or "= @username")
+	end })
 	profileRow:CreateButton({ Name = "Name: Guest", Callback = function() Window:SetProfile({ Name = "Guest", Image = "user" }) log("profile renamed") end })
 	profileRow:CreateButton({ Name = "Show / hide", Callback = function() Window:SetProfileVisible(not Window:IsProfileVisible()) log("profile visible =", Window:IsProfileVisible()) end })
 

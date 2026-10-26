@@ -3985,7 +3985,7 @@ function Mova:CreateWindow(props)
 	-- a 30px avatar plate and display name over @username, laid straight on the rail - nothing to
 	-- hover or click. Profile = false hides it and the tab list takes the height back;
 	-- Window:SetProfile{ Name, Subtitle, Image } changes the lines.
-	local PROFILE_H = 56
+	local PROFILE_H = 42
 	local profileProps = prop(props, nil, "Profile", "profile", "User", "user")
 	local showProfile = prop(props, true, "ShowProfile", "showProfile")
 	if profileProps == false then showProfile = false end
@@ -4000,15 +4000,18 @@ function Mova:CreateWindow(props)
 	local userId = LocalPlayer and tonumber(LocalPlayer.UserId) or 0
 	local footer = New("Frame", { Name = "Profile", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, PROFILE_H), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Visible = showProfile, Parent = sidebar })
 	pcall(function() footer.Interactable = false end)
-	local AV = 32
-	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(AV, AV), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Parent = footer })
-	Corner(10, avatar)
-	Stroke(avatar, "Stroke", 1, 0.85)
+	-- Quiet footer, one line by default: a small round avatar and the display name. A second,
+	-- dimmer line only appears when a Subtitle is asked for (Profile = { Subtitle = ... } or
+	-- SetProfile), so the corner never reads as a block of text.
+	local AV = 24
+	local avatar = New("Frame", { BackgroundColor3 = "SurfaceHover", Size = UDim2.fromOffset(AV, AV), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Parent = footer })
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = avatar })
+	Stroke(avatar, "Stroke", 1, 0.8)
 	-- initial only shows while there is no picture: headshots are PNGs with a transparent
 	-- background, so a letter underneath would bleed through the face
-	local initial = New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 13, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
+	local initial = New("TextLabel", { Text = displayName:sub(1, 1):upper(), TextSize = 11, Weight = "Bold", TextColor3 = "Text", Size = UDim2.fromScale(1, 1), Parent = avatar })
 	local head = New("ImageLabel", { Image = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = avatar })
-	Corner(10, head)
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = head })
 	local function setAvatar(image)
 		local spec = image and resolveIcon(image) or nil
 		if spec then applyIcon(head, spec) head.Visible = true else head.Image = "" head.Visible = false end
@@ -4017,15 +4020,26 @@ function Mova:CreateWindow(props)
 	self._setAvatar = setAvatar
 	self.ProfileAvatar, self.ProfileInitial, self.ProfileImage = avatar, initial, head
 	setAvatar(profileProps.Image or profileProps.Avatar or (userId > 0 and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=60&h=60") or nil))
-	local textX = 12 + AV + 9
+	local textX = 14 + AV + 8
 	local chipLabel = New("TextLabel", {
-		Text = profileProps.Name or displayName, TextSize = 12, TextColor3 = "Text", Weight = "SemiBold",
-		Size = UDim2.new(1, -textX - 8, 0, 14), Position = UDim2.new(0, textX, 0.5, -14), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
-	})
-	local chipSub = New("TextLabel", {
-		Text = profileProps.Subtitle or ("@" .. userName), TextSize = 10, TextColor3 = "TextDim", Size = UDim2.new(1, -textX - 8, 0, 12), Position = UDim2.new(0, textX, 0.5, 1),
+		Text = profileProps.Name or displayName, TextSize = 12, TextColor3 = "Text", Weight = "Medium",
+		Size = UDim2.new(1, -textX - 10, 0, 14), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, textX, 0.5, 0),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
 	})
+	local subText = profileProps.Subtitle
+	if subText == true then subText = "@" .. userName end
+	local chipSub = New("TextLabel", {
+		Text = (subText and subText ~= false) and tostring(subText) or "", TextSize = 10, TextColor3 = "TextDim", Visible = false,
+		Size = UDim2.new(1, -textX - 10, 0, 12), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, textX, 0.5, 7),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+	})
+	local function layoutProfile()
+		local two = chipSub.Text ~= ""
+		chipSub.Visible = two
+		chipLabel.Position = two and UDim2.new(0, textX, 0.5, -7) or UDim2.new(0, textX, 0.5, 0)
+	end
+	layoutProfile()
+	self._layoutProfile = layoutProfile
 	self.Profile, self.ChipLabel, self.ChipSub, self.ProfileAvatar = footer, chipLabel, chipSub, head
 	self._profileTextX = textX
 	self._profileShown = showProfile
@@ -4753,11 +4767,11 @@ function Window:SetProfile(info)
 	info = info or {}
 	if info.Name ~= nil then bindText(self.ChipLabel, tostring(info.Name)) end
 	if info.Subtitle ~= nil then
-		local text = info.Subtitle ~= false and tostring(info.Subtitle) or ""
+		local text = info.Subtitle
+		if text == true then text = "@" .. ((LocalPlayer and LocalPlayer.Name) or "guest") end
+		text = text ~= false and tostring(text) or ""
 		bindText(self.ChipSub, text)
-		self.ChipSub.Visible = text ~= ""
-		local x = self._profileTextX or 54
-		self.ChipLabel.Position = text ~= "" and UDim2.new(0, x, 0.5, -14) or UDim2.new(0, x, 0.5, -7)
+		if self._layoutProfile then self._layoutProfile() end
 	end
 	if info.Image ~= nil and self._setAvatar then self._setAvatar(info.Image or nil) end
 	return self
