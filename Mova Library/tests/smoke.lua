@@ -490,7 +490,7 @@ test("Label / Paragraph / Divider / Section", function()
 	truthy(sec.Holder.Visible)
 	mock.flush() mock.flush() -- one frame to lay out, then the grow tween settles
 	truthy(sec.Holder.AutomaticSize == Enum.AutomaticSize.Y and not sec.Holder.ClipsDescendants, "open content is auto-sized and unclipped again")
-	truthy(sec.Highlight.Parent == sec.Panel and sec.Highlight.BackgroundTransparency < 1, "accent line along the bottom while open")
+	truthy(sec.Highlight.Parent == sec.Panel and sec.Highlight.Position.Y.Offset == 44 and sec.Highlight.BackgroundTransparency < 1, "accent line under the header while open")
 	-- fold / unfold within the same animation must not leave the content stuck
 	sec:SetCollapsed(true) sec:SetCollapsed(false)
 	mock.flush() mock.flush()

@@ -3402,13 +3402,18 @@ function Container:CreateSection(props)
 	end
 	local chevronHolder = New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -11, 0.5, 0), Visible = collapsible, ZIndex = 3, Parent = header })
 	local chevron = Glyph("chevron-down", chevronHolder, "TextDim", 12, 1.5)
-	local rule = New("Frame", { Name = "Rule", BackgroundColor3 = "Divider", Size = UDim2.new(1, -2 * SECTION_PAD - 6, 0, 1), Position = UDim2.fromOffset(SECTION_PAD + 3, HEADER), Parent = panel })
-	-- accent highlight along the bottom edge while the section is open; fades out as it folds
-	local glow = New("Frame", {
-		Name = "Highlight", BackgroundColor3 = "Accent", BackgroundTransparency = 0.25, Size = UDim2.new(1, -2 * (SECTION_PAD + 6), 0, 2),
-		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -1), ZIndex = 2, Parent = panel,
+	-- highlight line directly under the header while the section is open: a 2px accent line that
+	-- starts bright at the left edge and fades out across the panel (the usual "active group" cue)
+	local rule = New("Frame", {
+		Name = "Highlight", BackgroundColor3 = "Accent", BackgroundTransparency = 0, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromOffset(0, HEADER),
+		BorderSizePixel = 0, ZIndex = 2, Parent = panel,
 	})
-	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = glow })
+	New("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.45, 0.45), NumberSequenceKeypoint.new(0.85, 1), NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = rule,
+	})
 	local holder = New("Frame", {
 		Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(0, HEADER + 1),
 		Parent = panel,
@@ -3423,7 +3428,7 @@ function Container:CreateSection(props)
 
 	local section = setmetatable({
 		Type = "Section", Name = name, Frame = panel, Panel = panel, Holder = holder, Header = header, TitleLabel = title, DescLabel = descLabel,
-		Stroke = panelStroke, Rule = rule, Highlight = glow, Chevron = chevron,
+		Stroke = panelStroke, Rule = rule, Highlight = rule, Chevron = chevron,
 		Window = self.Window, Tab = self.Tab or self, Elements = {}, Collapsed = false, Collapsible = collapsible, _order = 0,
 	}, Section)
 	self.Elements[#self.Elements + 1] = section
@@ -3456,11 +3461,9 @@ function Container:CreateSection(props)
 		if instant then
 			chevron.Rotation = state and -90 or 0
 			rule.BackgroundTransparency = state and 1 or 0
-			glow.BackgroundTransparency = state and 1 or 0.25
 		else
 			tween(chevron, { Rotation = state and -90 or 0 }, 0.3, Motion.Back, Motion.Out)
-			tween(rule, { BackgroundTransparency = state and 1 or 0 }, Motion.base)
-			tween(glow, { BackgroundTransparency = state and 1 or 0.25 }, state and Motion.fast or Motion.slow)
+			tween(rule, { BackgroundTransparency = state and 1 or 0 }, state and Motion.fast or Motion.slow)
 		end
 		if state then
 			local height = contentHeight()
